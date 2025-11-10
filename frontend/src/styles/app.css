@@ -1,0 +1,250 @@
+/* ===== THEME (WIN Perú) ===== 
+   Paleta base:
+   - Blanco (#FFFFFF) fondo
+   - Negro (#000000) texto principal
+   - Naranja WIN (#FF6A00) acento
+*/
+:root {
+  --bg: #ffffff;
+  --panel: #f7f7f7;
+  --soft: #efefef;
+  --soft-2: #e6e6e6;
+  --text: #111111;
+  --muted: #6b7280;
+  --accent: #ff6a00;
+  --accent-600: #cc5500;
+  --accent-100: #fff1e6;
+  --border: #dcdcdc;
+}
+
+/* Reset mínimo */
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Tipografía y base */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.4;
+}
+
+/* Contenedor general */
+.app {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Tarjetas / paneles */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--soft);
+  border-radius: 12px;
+  padding: 12px;
+}
+.card + .card {
+  margin-top: 10px;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--soft);
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.toolbar strong {
+  letter-spacing: 0.5px;
+}
+
+/* Sidebar / Main (se usan en tus grids inline) */
+.sidebar {
+  overflow: auto;
+  padding-right: 4px;
+}
+.main {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+}
+
+/* Botones */
+.btn {
+  background: #ffffff;
+  border: 1px solid #000000;
+  color: #000000;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease, color 0.15s ease;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.25);
+  border-color: var(--accent);
+}
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn.accent {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn.accent:hover {
+  background: var(--accent-600);
+  border-color: var(--accent-600);
+}
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Inputs / selects */
+.select,
+input[type="text"],
+input[type="search"],
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #cfcfcf;
+  background: #ffffff;
+  color: var(--text);
+  margin-top: 6px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.select:focus,
+input[type="text"]:focus,
+input[type="search"]:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.15);
+}
+::placeholder {
+  color: #9ca3af;
+}
+
+/* Contenedores de grafo */
+.graph-container {
+  position: relative;
+  inset: 0;
+  width: 100%;
+  height: 100%; /* << ANTES 70vh: ahora llena el alto del padre */
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+/* Tooltips de vis-network */
+.vis-tooltip {
+  background: #fff !important;
+  color: #111 !important;
+  border: 1px solid #ddd !important;
+  border-radius: 6px !important;
+  padding: 6px 8px !important;
+}
+
+/* Bloques de código / JSON */
+.code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 12px;
+  color: #cde;
+  background: #0b1220;
+  padding: 8px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid #1c2a46;
+}
+
+/* Details/summary (acordeones) */
+details {
+  background: transparent;
+  border: 0;
+}
+details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details > summary b {
+  border-bottom: 1px dashed var(--soft-2);
+}
+details[open] > summary b {
+  border-bottom-color: var(--accent);
+}
+
+/* Listas compactas */
+ul.compact {
+  margin: 0;
+  padding-left: 18px;
+}
+ul.compact li {
+  margin: 4px 0;
+}
+
+/* Utilidades */
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.muted {
+  color: var(--muted);
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--soft-2);
+  background: #fff;
+}
+
+/* Scrollbars (WebKit) – opcional */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cfcfcf;
+  border-radius: 8px;
+  border: 2px solid #ffffff;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #bdbdbd;
+}
