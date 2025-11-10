@@ -15,15 +15,27 @@ export default function RouteDetailGraph({ route, onSelect }) {
   const [errMsg, setErrMsg] = useState("");
   const [locked, setLocked] = useState(false);
 
+  // Selección (persistente)
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
 
+  // Modo selección manual
+  const [selectMode, setSelectMode] = useState(false);
+
+  // Para restaurar estilos del seleccionado previo sin redibujar todo
+  const prevNodeRef = useRef(null);
+  const prevEdgeRef = useRef(null);
+
+  // ===== Carga de datos =====
   useEffect(() => {
     if (!route?.id) return;
     setLoading(true);
     setErrMsg("");
     setSelectedEdgeId(null);
     setSelectedNodeId(null);
+    prevNodeRef.current = null;
+    prevEdgeRef.current = null;
+
     Promise.all([
       api.get(`/topology/routes/${route.id}/graph-with-access`),
       api.get(`/topology/routes/${route.id}/inventory`),
@@ -43,11 +55,12 @@ export default function RouteDetailGraph({ route, onSelect }) {
       .finally(() => setLoading(false));
   }, [route]);
 
+  // ===== Opciones de vis-network (sin color global para no pisar updates) =====
   const options = useMemo(
     () => ({
       physics: { enabled: false },
       nodes: { font: { color: "#e5e7eb" } },
-      edges: { smooth: { type: "continuous" }, color: "#94a3b8", width: 2 },
+      edges: { smooth: { type: "continuous" }, width: 2 },
       groups: {
         odf: { shape: "box", color: "#22d3ee" },
         pole: { shape: "dot", color: "#a5b4fc" },
@@ -63,12 +76,14 @@ export default function RouteDetailGraph({ route, onSelect }) {
         dragNodes: true,
         dragView: true,
         zoomView: true,
+        multiselect: false,
       },
     }),
     []
   );
 
-  const colorForEdgeGroup = (g) =>
+  // ===== Estilo base para aristas según grupo =====
+  const baseEdgeColor = (g) =>
     g === "odf_link"
       ? "#22d3ee"
       : g === "pole_mufa"
@@ -76,136 +91,184 @@ export default function RouteDetailGraph({ route, onSelect }) {
       : g === "patch"
       ? "#111111"
       : "#94a3b8";
-  const dashesForEdgeGroup = (g) => g === "odf_link" || g === "pole_mufa";
+  const baseEdgeDashes = (g) => g === "odf_link" || g === "pole_mufa";
 
-  const styledData = useMemo(() => {
-    const SEL_RED = "#ff3b30";
-    const SEL_BORDER = "#b91c1c";
+  // ===== Data base (sin pintar selección aquí) =====
+  const baseData = useMemo(() => {
+    const nodes = (graph.nodes || []).map((n) => ({
+      id: n.id,
+      label: n.label ?? n.id,
+      x: n.x,
+      y: n.y,
+      fixed: n.fixed ?? { x: true, y: true },
+      group: n.group, // color/forma base por grupo
+      meta: n.meta || null,
+    }));
 
-    const nodes = (graph.nodes || []).map((n) => {
-      const base = {
-        id: n.id,
-        label: n.label ?? n.id,
-        x: n.x,
-        y: n.y,
-        fixed: n.fixed ?? { x: true, y: true },
-        group: n.group,
-        meta: n.meta || null,
-      };
-      if (n.id === selectedNodeId) {
-        return {
-          ...base,
-          color: { background: SEL_RED, border: SEL_BORDER },
-        };
-      }
-      return base;
-    });
+    const edges = (graph.edges || []).map((e) => ({
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      title: e.title ?? "",
+      group: e.group || "edge",
+      color: { color: baseEdgeColor(e.group) },
+      dashes: baseEdgeDashes(e.group),
+      width: 2,
+      meta: e.meta || null,
+    }));
 
-    const edges = (graph.edges || []).map((e) => {
-      const isSel = e.id === selectedEdgeId;
-
-      return {
-        id: e.id,
-        from: e.from,
-        to: e.to,
-        title: e.title ?? "",
-        color: isSel ? SEL_RED : colorForEdgeGroup(e.group),
-        dashes: isSel ? false : dashesForEdgeGroup(e.group),
-        width: isSel ? 3 : 2,
-        group: e.group || "edge",
-        meta: e.meta || null,
-      };
-    });
     return { nodes, edges };
-  }, [graph, selectedEdgeId, selectedNodeId]);
+  }, [graph]);
 
+  // ===== Crear/actualizar network SOLO cuando cambia la data base =====
   useEffect(() => {
     if (!containerRef.current) return;
 
     if (!networkRef.current) {
-      networkRef.current = new Network(
-        containerRef.current,
-        styledData,
-        options
-      );
+      networkRef.current = new Network(containerRef.current, baseData, options);
       networkRef.current.once("afterDrawing", () => {
         try {
           networkRef.current.fit({ animation: { duration: 400 } });
         } catch {
-          //noop
+          /* noop */
         }
-      });
-
-      // CLICK -> manda info a DetailsPanel
-      networkRef.current.on("doubleClick", (params) => {
-        const n = params?.nodes?.[0];
-        const e = params?.edges?.[0];
-
-        if (n) {
-          setSelectedNodeId(n);
-          setSelectedEdgeId(null);
-          if (typeof onSelect === "function") {
-            const nodeData = graph.nodes?.find((x) => x.id === n) || null;
-            onSelect({ node: nodeData, edge: null });
-          }
-          return;
-        }
-        if (e) {
-          setSelectedEdgeId(e);
-          setSelectedNodeId(null);
-          if (typeof onSelect === "function") {
-            const edgeData = graph.edges?.find((x) => x.id === e) || null;
-            onSelect({ node: null, edge: edgeData });
-          }
-          return;
-        }
-      });
-
-      networkRef.current.on("click", (params) => {
-        const dsNodes = networkRef.current.body.data.nodes;
-        const dsEdges = networkRef.current.body.data.edges;
-
-        if (params?.nodes?.length) {
-          const n = dsNodes.get(params.nodes[0]);
-          onSelect?.({
-            node: {
-              id: n.id,
-              kind: n.group?.toUpperCase() || "NODE",
-              label: n.label,
-              meta: n.meta || null,
-            },
-          });
-          return;
-        }
-
-        if (params?.edges?.length) {
-          const e = dsEdges.get(params.edges[0]);
-          onSelect?.({
-            edge: {
-              id: e.id,
-              edge_kind: e.group || "EDGE",
-              from: e.from,
-              to: e.to,
-              title: e.title ?? "",
-              meta: e.meta || null,
-            },
-          });
-          return;
-        }
-
-        onSelect?.(null);
       });
     } else {
-      networkRef.current.setData(styledData);
+      networkRef.current.setData(baseData);
       try {
         networkRef.current.redraw();
       } catch {
-        // noop
+        /* noop */
       }
     }
-  }, [styledData, options, onSelect, graph.nodes, graph.edges]);
+  }, [baseData, options]);
 
-  // Drag temporal: desbloquear y re-fijar + guardar
+  // ===== Click: notificar DetailsPanel y, si selectMode, fijar selección =====
+  useEffect(() => {
+    const net = networkRef.current;
+    if (!net) return;
+
+    const handlerClick = (params) => {
+      const dsNodes = net.body.data.nodes;
+      const dsEdges = net.body.data.edges;
+
+      const nodeId = params?.nodes?.[0] || null;
+      const edgeId = params?.edges?.[0] || null;
+
+      // Notificar
+      if (nodeId) {
+        const n = dsNodes.get(nodeId);
+        onSelect?.({
+          node: {
+            id: n.id,
+            kind: n.group?.toUpperCase() || "NODE",
+            label: n.label,
+            meta: n.meta || null,
+          },
+          edge: null,
+        });
+      } else if (edgeId) {
+        const e = dsEdges.get(edgeId);
+        onSelect?.({
+          node: null,
+          edge: {
+            id: e.id,
+            edge_kind: e.group || "EDGE",
+            from: e.from,
+            to: e.to,
+            title: e.title ?? "",
+            meta: e.meta || null,
+          },
+        });
+      } else {
+        // clic en vacío: no tocar selección para que permanezca
+        return;
+      }
+
+      // Fijar selección solo en modo selección
+      if (selectMode) {
+        if (nodeId) {
+          setSelectedNodeId(nodeId);
+          setSelectedEdgeId(null);
+        } else if (edgeId) {
+          setSelectedEdgeId(edgeId);
+          setSelectedNodeId(null);
+        }
+        // Si prefieres que el modo se desactive tras elegir, descomenta:
+        // setSelectMode(false);
+      }
+    };
+
+    net.on("click", handlerClick);
+    return () => {
+      net.off("click", handlerClick);
+    };
+  }, [selectMode, onSelect]);
+
+  // ===== Pintar/restaurar SOLO el elemento seleccionado (sin setData) =====
+  useEffect(() => {
+    const net = networkRef.current;
+    if (!net) return;
+
+    const nodesDS = net.body.data.nodes;
+    const edgesDS = net.body.data.edges;
+
+    const SEL_NODE = { background: "#ff3b30", border: "#b91c1c" };
+    const SEL_EDGE_COLOR = "#ff3b30";
+
+    // Restaurar nodo previo
+    if (prevNodeRef.current && prevNodeRef.current !== selectedNodeId) {
+      const prevId = prevNodeRef.current;
+      const n = nodesDS.get(prevId);
+      if (n) {
+        nodesDS.update({ id: prevId, color: undefined });
+      }
+      prevNodeRef.current = null;
+    }
+
+    // Restaurar arista previa
+    if (prevEdgeRef.current && prevEdgeRef.current !== selectedEdgeId) {
+      const prevEid = prevEdgeRef.current;
+      const e = edgesDS.get(prevEid);
+      if (e) {
+        edgesDS.update({
+          id: prevEid,
+          color: { color: baseEdgeColor(e.group) },
+          dashes: baseEdgeDashes(e.group),
+          width: 2,
+        });
+      }
+      prevEdgeRef.current = null;
+    }
+
+    // Pintar nuevo nodo seleccionado
+    if (selectedNodeId) {
+      const n = nodesDS.get(selectedNodeId);
+      if (n) {
+        nodesDS.update({
+          id: selectedNodeId,
+          color: { background: SEL_NODE.background, border: SEL_NODE.border },
+        });
+        prevNodeRef.current = selectedNodeId;
+      }
+    }
+
+    // Pintar nueva arista seleccionada
+    if (selectedEdgeId) {
+      const e = edgesDS.get(selectedEdgeId);
+      if (e) {
+        edgesDS.update({
+          id: selectedEdgeId,
+          color: { color: SEL_EDGE_COLOR },
+          dashes: false,
+          width: 3,
+        });
+        prevEdgeRef.current = selectedEdgeId;
+      }
+    }
+  }, [selectedNodeId, selectedEdgeId]); // <- NO depende de baseData
+
+  // ===== Drag temporal: desbloquear/guardar/re-fijar =====
   useEffect(() => {
     const net = networkRef.current;
     if (!net) return;
@@ -250,6 +313,7 @@ export default function RouteDetailGraph({ route, onSelect }) {
     };
   }, [locked]);
 
+  // ===== Guardar TODO =====
   const saveAllPositions = async () => {
     const net = networkRef.current;
     if (!net) return;
@@ -268,10 +332,11 @@ export default function RouteDetailGraph({ route, onSelect }) {
     }
   };
 
+  // ===== Limpiar selección =====
   const clearSelection = () => {
-    selectedEdgeId(null);
-    selectedNodeId(null);
-    if (typeof onSelect === "function") onSelect(null);
+    setSelectedEdgeId(null);
+    setSelectedNodeId(null);
+    onSelect?.(null);
   };
 
   return (
@@ -310,9 +375,6 @@ export default function RouteDetailGraph({ route, onSelect }) {
         <div className="card" style={{ minWidth: 320 }}>
           <b>Ruta:</b> {route?.id ?? "-"}
           <br />
-          <small>
-            {route?.from_odf_id ?? "?"} → {route?.to_odf_id ?? "?"}
-          </small>
           {inventory && (
             <>
               <hr style={{ borderColor: "#374151", margin: "10px 0" }} />
@@ -369,6 +431,18 @@ export default function RouteDetailGraph({ route, onSelect }) {
         }}
       >
         <button
+          className={`btn ${selectMode ? "accent" : ""}`}
+          onClick={() => setSelectMode((v) => !v)}
+          title={
+            selectMode
+              ? "Modo selección ACTIVO: clic en un elemento para resaltarlo"
+              : "Activar modo selección para resaltar"
+          }
+        >
+          {selectMode ? "🎯 Selección ON" : "Seleccionar elemento"}
+        </button>
+
+        <button
           className={`btn ${locked ? "accent" : ""}`}
           onClick={() => setLocked((v) => !v)}
           title={
@@ -386,10 +460,8 @@ export default function RouteDetailGraph({ route, onSelect }) {
         <button className="btn" onClick={saveAllPositions} disabled={loading}>
           Guardar posiciones (todo)
         </button>
-
-        {/* Quitar seleccion */}
         <button className="btn" onClick={clearSelection}>
-          Limpiar Selección
+          Limpiar selección
         </button>
       </div>
     </>
