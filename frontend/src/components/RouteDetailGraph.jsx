@@ -161,7 +161,6 @@ export default function RouteDetailGraph({ route, onSelect }) {
         }
       });
 
-      /*
       networkRef.current.on("click", (params) => {
         const dsNodes = networkRef.current.body.data.nodes;
         const dsEdges = networkRef.current.body.data.edges;
@@ -196,7 +195,6 @@ export default function RouteDetailGraph({ route, onSelect }) {
 
         onSelect?.(null);
       });
-      */
     } else {
       networkRef.current.setData(styledData);
       try {
