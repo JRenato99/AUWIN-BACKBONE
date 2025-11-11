@@ -137,41 +137,6 @@ export default function RouteDetailGraph({ route, onSelect }) {
           //noop
         }
       });
-      /*
-      networkRef.current.on("click", (params) => {
-        const dsNodes = networkRef.current.body.data.nodes;
-        const dsEdges = networkRef.current.body.data.edges;
-
-        if (params?.nodes?.length) {
-          const n = dsNodes.get(params.nodes[0]);
-          onSelect?.({
-            node: {
-              id: n.id,
-              kind: n.group?.toUpperCase() || "NODE",
-              label: n.label,
-              meta: n.meta || null,
-            },
-          });
-          return;
-        }
-
-        if (params?.edges?.length) {
-          const e = dsEdges.get(params.edges[0]);
-          onSelect?.({
-            edge: {
-              id: e.id,
-              edge_kind: e.group || "EDGE",
-              from: e.from,
-              to: e.to,
-              title: e.title ?? "",
-              meta: e.meta || null,
-            },
-          });
-          return;
-        }
-          
-        onSelect?.(null);
-      });*/
     } else {
       networkRef.current.setData(styledData);
       try {
@@ -193,33 +158,29 @@ export default function RouteDetailGraph({ route, onSelect }) {
       const nodeId = params?.nodes?.[0] || null;
       const edgeId = params?.edges?.[0] || null;
 
+      if (!nodeId && !edgeId) return;
+
+      const payload = { node: null, edge: null, pinned: null };
+
       // Notificar al DetailPanel
       if (nodeId) {
         const n = dsNodes.get(nodeId);
-        onSelect?.({
-          node: {
-            id: n.id,
-            kind: n.group?.toUpperCase() || "NODE",
-            label: n.label,
-            meta: n.meta || null,
-          },
-          edge: null,
-        });
+        payload.node = {
+          id: n.id,
+          kind: n.group?.toUpperCase() || "NODE",
+          label: n.label,
+          meta: n.meta || null,
+        };
       } else if (edgeId) {
         const e = dsEdges.get(edgeId);
-        onSelect?.({
-          node: null,
-          edge: {
-            id: e.id,
-            edge_kind: e.group || "EDGE",
-            from: e.from,
-            to: e.to,
-            title: e.title ?? "",
-            meta: e.meta || null,
-          },
-        });
-      } else {
-        return;
+        payload.edge = {
+          id: e.id,
+          edge_kind: e.group || "EDGE",
+          from: e.from,
+          to: e.to,
+          title: e.title ?? "",
+          meta: e.meta || null,
+        };
       }
 
       // Si esta en modo seleccion resalta uno y apaga el modo
@@ -227,12 +188,17 @@ export default function RouteDetailGraph({ route, onSelect }) {
         if (nodeId) {
           setSelectedNodeId(nodeId);
           setSelectedEdgeId(null);
+          payload.pinned = { type: "node", id: nodeId };
+          console.log(payload);
         } else if (edgeId) {
           setSelectedEdgeId(edgeId);
           setSelectedNodeId(null);
+          payload.pinned = { type: "edge", id: edgeId };
+          console.log(payload);
         }
         //setSelectMode(false);
       }
+      onSelect?.(payload);
     };
     net.on("click", handlerClick);
     return () => {
