@@ -21,6 +21,7 @@ GO
 CREATE TABLE dbo.nodo (
     id NVARCHAR(64) NOT NULL PRIMARY KEY,
     code NVARCHAR(128) NOT NULL,
+    type NVARCHAR(200) NOT NULL,
     name NVARCHAR(200) NOT NULL,
     reference NVARCHAR(400) NULL,
     gps_lat FLOAT NULL,
@@ -91,6 +92,7 @@ CREATE TABLE dbo.pole (
   code NVARCHAR(128) NOT NULL,
   pole_type NVARCHAR(32) NOT NULL,
   owner NVARCHAR(100) NULL,
+  high FLOAT NULL,  
   district NVARCHAR(100) NULL,
   address_ref NVARCHAR(400) NULL,
   gps_lat FLOAT NULL,
@@ -98,7 +100,10 @@ CREATE TABLE dbo.pole (
   status NVARCHAR(100) NULL,
   has_reserve BIT NOT NULL,
   reserve_length_m FLOAT NULL,
-  has_cruceta  BIT NOT NULL  
+  has_cruceta  BIT NOT NULL,
+  has_elem_retencion  BIT NOT NULL,
+  has_elem_suspension  BIT NOT NULL,
+  declared BIT NULL,
 );
 GO
 
@@ -129,6 +134,7 @@ CREATE TABLE dbo.fiber_filament (
   cable_id NVARCHAR(64) NOT NULL,
   filament_no INT NOT NULL,
   color_code NVARCHAR(32) NULL,
+  -- owner 
   CONSTRAINT FK_Cable_FiberFilament FOREIGN KEY (cable_id) REFERENCES dbo.cable(id)
 );
 GO
@@ -179,6 +185,7 @@ CREATE TABLE dbo.cable_span (
   to_pole_id NVARCHAR(64) NOT NULL,
   length_m FLOAT NULL, 
   capacity_fibers FLOAT NULL,
+  length_span FLOAT NULL,
   FOREIGN KEY (cable_id) REFERENCES dbo.cable(id),
   FOREIGN KEY (from_pole_id) REFERENCES dbo.pole(id), 
   FOREIGN KEY (to_pole_id) REFERENCES dbo.pole(id),

@@ -283,7 +283,7 @@ export default function RouteDetailGraph({ route, onSelect }) {
         ref={containerRef}
         style={{
           width: "100%",
-          height: "70vh",
+          height: "90vh",
           borderRadius: 8,
           border: "1px solid #1f2937",
         }}

@@ -40,6 +40,7 @@ BEGIN
       sp.splice_id,
       sp.mufa_id,
       sp.pole_id,
+      --sp.loss_db
       CASE WHEN sp.a_fiber_filament_id = rt.fiber_id THEN sp.b_fiber_filament_id ELSE sp.a_fiber_filament_id END,
       ff.cable_id,
       ff.filament_no
