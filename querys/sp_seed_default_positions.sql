@@ -1,4 +1,4 @@
-
+-- NO USADO
 
 -- Seed de posiciones por defecto (grilla) para nodos de planta interna (ODFs/Nodos)
 IF OBJECT_ID('dbo.sp_seed_default_positions') IS NULL

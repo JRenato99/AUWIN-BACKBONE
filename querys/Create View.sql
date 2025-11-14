@@ -69,7 +69,8 @@ BEGIN
     exec('CREATE VIEW dbo.vw_route_physical_summary AS
     WITH spans AS (
       SELECT odf_route_id,
-             STRING_AGG(CONCAT(''['', seg_seq, '']'', cs.cable_id, '':'', cs.from_pole_id, ''&'', cs.to_pole_id, '' ('', cs.length_m, ''m)''), '' | '')
+             STRING_AGG(CONCAT(''['', seg_seq, '']'', cs.cable_id, '':'', 
+             cs.from_pole_id, ''&'', cs.to_pole_id, '' ('', cs.length_m, ''m)''), '' | '')
                WITHIN GROUP (ORDER BY seg_seq) AS span_list
       FROM dbo.vw_route_segments_expanded e
       JOIN dbo.cable_span cs ON cs.id = e.cable_span_id
@@ -90,11 +91,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.vw_fib
 BEGIN
     exec('CREATE VIEW dbo.vw_fiber_splice AS
     SELECT 
-      sp.id             AS splice_id,
+      sp.id AS splice_id,
       sp.mufa_id,
       m.pole_id,
       sp.a_fiber_filament_id,
-      sp.b_fiber_filament_id,
+      sp.b_fiber_filament_id  
     FROM dbo.splice sp
     JOIN dbo.mufa m ON m.id = sp.mufa_id;')
 END
