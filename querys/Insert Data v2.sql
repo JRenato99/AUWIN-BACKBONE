@@ -1,39 +1,58 @@
 /*==================================================================
-SCRIPT DE INSERCIÓN DE DATOS - PROYECTO AUWIN
+SCRIPT DE INSERCIÓN DE DATOS v2.1 - CORREGIDO
 ====================================================================
 Escenario:
 1.  Anillo Backbone: NODO-SANI <-> NODO-MIRA <-> NODO-SURCO
+    * CADA RUTA DEL ANILLO TENDRÁ ~15 POSTES Y 2 MUFAS DE PASO.
 2.  Split de Distribución: NODO-SURCO -> MUFA-SPLIT -> NODO-LAVIC
                                                 |
                                                 +-> NODO-BARR
+    * CADA RUTA DE DISTRIBUCIÓN TENDRÁ ~10 POSTES.
+
+CORRECCIÓN: Añadida la palabra clave 'SET' en las asignaciones
+de variables dentro de los bucles (Fases 3, 4, 6, 8).
 ==================================================================*/
 
-USE tempAUWIN;
+USE AUWIN;
 GO
 
 SET NOCOUNT ON;
 GO
 
--- Envolver todo en una transacción para asegurar que todo se inserte
--- o nada se inserte si hay un error.
+-- Envolver todo en una transacción
 BEGIN TRANSACTION;
 
 BEGIN TRY
 
--- Declarar variables para los bucles de filamentos/empalmes
-DECLARE @i INT;
+-- Declarar TODAS las variables para los bucles al inicio
+DECLARE @i INT, @j INT, @seq INT;
 DECLARE @CableID NVARCHAR(64);
 DECLARE @FilamentPrefix NVARCHAR(60);
 DECLARE @FilamentID NVARCHAR(64);
 DECLARE @FilamentNo INT;
 
+-- Variables para bucles de postes/spans
+DECLARE @FromPoleID NVARCHAR(64);
+DECLARE @ToPoleID NVARCHAR(64);
+DECLARE @PolePrefix NVARCHAR(60);
+DECLARE @PoleID NVARCHAR(64);
+DECLARE @SpanPrefix NVARCHAR(60);
+DECLARE @SpanID NVARCHAR(64);
+DECLARE @RouteID NVARCHAR(64);
+DECLARE @SegID NVARCHAR(64);
+
+-- Variables para bucles de Splice
+DECLARE @SpliceID_A NVARCHAR(64), @Fiber_A NVARCHAR(64), @Fiber_B NVARCHAR(64);
+DECLARE @SpliceID_B NVARCHAR(64), @Fiber_A_B NVARCHAR(64), @Fiber_B_B NVARCHAR(64);
+
+
 /*============================================================
-FASE 1: CREAR ACTIVOS PRINCIPALES (NODOS, POSTES, CABLES)
+FASE 1: CREAR ACTIVOS PRINCIPALES (NODOS, CABLES)
 ============================================================*/
 
-PRINT 'FASE 1: Insertando Nodos, Postes y Cables...';
+PRINT 'FASE 1: Insertando Nodos y Cables...';
 
--- 1.1) Nodos (5 Nodos: 3 Distribución, 2 Acceso)
+-- 1.1) Nodos (5 Nodos)
 INSERT INTO dbo.nodo (id, code, type, name, reference, gps_lat, gps_lon) VALUES
 ('NODO-SANI', 'LIM-SANI-001', 'Distribucion', 'Nodo San Isidro', 'Av. Javier Prado Este 210', -12.089, -77.050),
 ('NODO-MIRA', 'LIM-MIRA-001', 'Distribucion', 'Nodo Miraflores', 'Av. Larco 400', -12.122, -77.030),
@@ -41,20 +60,7 @@ INSERT INTO dbo.nodo (id, code, type, name, reference, gps_lat, gps_lon) VALUES
 ('NODO-LAVIC', 'LIM-LAVIC-001', 'Acceso', 'Nodo La Victoria', 'Av. Iquitos 800', -12.068, -77.026),
 ('NODO-BARR', 'LIM-BARR-001', 'Acceso', 'Nodo Barranco', 'Av. Grau 300', -12.140, -77.020);
 
--- 1.2) Postes (10 postes para crear las rutas)
-INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension) VALUES
-('P-SM-01', 'POLE-1001', 'Concreto', 'Luz del Sur', 12, 'San Isidro', 'Cerca NODO-SANI', -12.090, -77.050, 'Activo', 0, 0, 1, 1, 0),
-('P-SM-02', 'POLE-1002', 'Concreto', 'Luz del Sur', 12, 'Miraflores', 'Cerca NODO-MIRA', -12.121, -77.030, 'Activo', 1, 20, 1, 1, 0),
-('P-MS-01', 'POLE-2001', 'Concreto', 'Luz del Sur', 12, 'Miraflores', 'Cerca NODO-MIRA', -12.123, -77.030, 'Activo', 0, 0, 1, 1, 0),
-('P-MS-02', 'POLE-2002', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Cerca NODO-SURCO', -12.137, -77.005, 'Activo', 1, 20, 1, 1, 0),
-('P-SS-01', 'POLE-3001', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Cerca NODO-SURCO', -12.138, -77.004, 'Activo', 0, 0, 1, 1, 0),
-('P-SS-02', 'POLE-3002', 'Concreto', 'Luz del Sur', 12, 'San Isidro', 'Cerca NODO-SANI', -12.089, -77.049, 'Activo', 1, 20, 1, 1, 0),
-('P-SPLIT-01', 'POLE-4001', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Salida SURCO para Split', -12.139, -77.005, 'Activo', 0, 0, 1, 1, 0),
-('P-SPLIT-02', 'POLE-4002', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Poste de la MUFA-SPLIT', -12.140, -77.010, 'Activo', 1, 40, 1, 1, 1),
-('P-SL-01', 'POLE-5001', 'Concreto', 'Luz del Sur', 12, 'La Victoria', 'Cerca NODO-LAVIC', -12.069, -77.026, 'Activo', 0, 0, 1, 1, 0),
-('P-SB-01', 'POLE-6001', 'Concreto', 'Luz del Sur', 12, 'Barranco', 'Cerca NODO-BARR', -12.140, -77.019, 'Activo', 0, 0, 1, 1, 0);
-
--- 1.3) Cables (3 de 144 hilos para el anillo, 1 de 96 y 2 de 48 para el split)
+-- 1.2) Cables (6 Cables principales)
 INSERT INTO dbo.cable (id, code, material_type, jacket_type, fiber_count) VALUES
 ('CABLE-SM', 'TRONCAL-SANI-MIRA', 'ADSS', 'Outdoor', 144),
 ('CABLE-MS', 'TRONCAL-MIRA-SURCO', 'ADSS', 'Outdoor', 144),
@@ -95,8 +101,7 @@ INSERT INTO dbo.odf (id, nodo_id, name, code, total_ports) VALUES
 ('ODF-BARR-01', 'NODO-BARR', 'BARR-ODF-01 (RTR-01)', 'ODF-BARR-A', 48),
 ('ODF-BARR-02', 'NODO-BARR', 'BARR-ODF-02 (RTR-02)', 'ODF-BARR-B', 48);
 
--- 2.3) Puertos de Router (Crearemos los puertos que conectan al ODF)
--- Puertos para el Anillo
+-- 2.3) Puertos de Router
 INSERT INTO dbo.router_port (id, router_id, port_no, status, type_port, speed) VALUES
 ('RP-SANI-01-P1', 'RTR-SANI-01', 1, 'Up', '100GE', 100000),
 ('RP-MIRA-01-P1', 'RTR-MIRA-01', 1, 'Up', '100GE', 100000),
@@ -104,14 +109,12 @@ INSERT INTO dbo.router_port (id, router_id, port_no, status, type_port, speed) V
 ('RP-SURCO-01-P1', 'RTR-SURCO-01', 1, 'Up', '100GE', 100000),
 ('RP-SURCO-02-P1', 'RTR-SURCO-02', 1, 'Up', '100GE', 100000),
 ('RP-SANI-02-P1', 'RTR-SANI-02', 1, 'Up', '100GE', 100000),
--- Puertos para el Split
-('RP-SURCO-01-P2', 'RTR-SURCO-01', 2, 'Up', '10GE', 10000), -- Salida a LAVIC
-('RP-SURCO-01-P3', 'RTR-SURCO-01', 3, 'Up', '10GE', 10000), -- Salida a BARR
+('RP-SURCO-01-P2', 'RTR-SURCO-01', 2, 'Up', '10GE', 10000),
+('RP-SURCO-01-P3', 'RTR-SURCO-01', 3, 'Up', '10GE', 10000),
 ('RP-LAVIC-01-P1', 'RTR-LAVIC-01', 1, 'Up', '10GE', 10000),
 ('RP-BARR-01-P1', 'RTR-BARR-01', 1, 'Up', '10GE', 10000);
 
 -- 2.4) Puertos de ODF
--- Puertos para el Anillo
 INSERT INTO dbo.odf_port (id, odf_id, port_no, status, connector_type) VALUES
 ('OP-SANI-01-P1', 'ODF-SANI-01', 1, 'Connected', 'LC'),
 ('OP-MIRA-01-P1', 'ODF-MIRA-01', 1, 'Connected', 'LC'),
@@ -119,22 +122,19 @@ INSERT INTO dbo.odf_port (id, odf_id, port_no, status, connector_type) VALUES
 ('OP-SURCO-01-P1', 'ODF-SURCO-01', 1, 'Connected', 'LC'),
 ('OP-SURCO-02-P1', 'ODF-SURCO-02', 1, 'Connected', 'LC'),
 ('OP-SANI-02-P1', 'ODF-SANI-02', 1, 'Connected', 'LC'),
--- Puertos para el Split
-('OP-SURCO-01-P2', 'ODF-SURCO-01', 2, 'Connected', 'LC'), -- Salida a LAVIC
-('OP-SURCO-01-P3', 'ODF-SURCO-01', 3, 'Connected', 'LC'), -- Salida a BARR
+('OP-SURCO-01-P2', 'ODF-SURCO-01', 2, 'Connected', 'LC'),
+('OP-SURCO-01-P3', 'ODF-SURCO-01', 3, 'Connected', 'LC'),
 ('OP-LAVIC-01-P1', 'ODF-LAVIC-01', 1, 'Connected', 'LC'),
 ('OP-BARR-01-P1', 'ODF-BARR-01', 1, 'Connected', 'LC');
 
 -- 2.5) Links Internos (Patch Cords)
 INSERT INTO dbo.link_router_odf (id, router_port_id, odf_port_id) VALUES
--- Anillo
 ('LNK-SANI-01', 'RP-SANI-01-P1', 'OP-SANI-01-P1'),
 ('LNK-MIRA-01', 'RP-MIRA-01-P1', 'OP-MIRA-01-P1'),
 ('LNK-MIRA-02', 'RP-MIRA-02-P1', 'OP-MIRA-02-P1'),
 ('LNK-SURCO-01', 'RP-SURCO-01-P1', 'OP-SURCO-01-P1'),
 ('LNK-SURCO-02', 'RP-SURCO-02-P1', 'OP-SURCO-02-P1'),
 ('LNK-SANI-02', 'RP-SANI-02-P1', 'OP-SANI-02-P1'),
--- Split
 ('LNK-SURCO-LAVIC', 'RP-SURCO-01-P2', 'OP-SURCO-01-P2'),
 ('LNK-SURCO-BARR', 'RP-SURCO-01-P3', 'OP-SURCO-01-P3'),
 ('LNK-LAVIC-01', 'RP-LAVIC-01-P1', 'OP-LAVIC-01-P1'),
@@ -142,35 +142,185 @@ INSERT INTO dbo.link_router_odf (id, router_port_id, odf_port_id) VALUES
 
 
 /*============================================================
-FASE 3: CREAR PLANTA EXTERNA (MUFAS, TRAMOS DE CABLE)
+FASE 3: GENERACIÓN MASIVA DE PLANTA EXTERNA (POSTES, MUFAS)
 ============================================================*/
 
-PRINT 'FASE 3: Insertando Planta Externa (Mufas, Tramos de Cable)...';
+PRINT 'FASE 3: Generando POSTES y MUFAS...';
 
--- 3.1) Mufas (1 mufa en cada poste intermedio del anillo + 1 mufa para el split)
+-- 3.1) Postes de inicio y fin de ruta (cerca de los nodos)
+INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension) VALUES
+('P-SANI-01-START', 'P-SANI-01', 'Concreto', 'Luz del Sur', 12, 'San Isidro', 'Salida NODO-SANI (a MIRA)', -12.090, -77.050, 'Activo', 0, 0, 1, 1, 0),
+('P-SANI-02-START', 'P-SANI-02', 'Concreto', 'Luz del Sur', 12, 'San Isidro', 'Llegada NODO-SANI (de SURCO)', -12.089, -77.049, 'Activo', 0, 0, 1, 1, 0),
+('P-MIRA-01-END',   'P-MIRA-01', 'Concreto', 'Luz del Sur', 12, 'Miraflores', 'Llegada NODO-MIRA (de SANI)', -12.121, -77.030, 'Activo', 0, 0, 1, 1, 0),
+('P-MIRA-02-START', 'P-MIRA-02', 'Concreto', 'Luz del Sur', 12, 'Miraflores', 'Salida NODO-MIRA (a SURCO)', -12.123, -77.030, 'Activo', 0, 0, 1, 1, 0),
+('P-SURCO-01-END',  'P-SURCO-01', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Llegada NODO-SURCO (de MIRA)', -12.137, -77.005, 'Activo', 0, 0, 1, 1, 0),
+('P-SURCO-02-START','P-SURCO-02', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Salida NODO-SURCO (a SANI)', -12.138, -77.004, 'Activo', 0, 0, 1, 1, 0),
+('P-SURCO-03-START','P-SURCO-03', 'Concreto', 'Luz del Sur', 12, 'Surco', 'Salida NODO-SURCO (a SPLIT)', -12.139, -77.005, 'Activo', 0, 0, 1, 1, 0),
+('P-LAVIC-01-END',  'P-LAVIC-01', 'Concreto', 'Luz del Sur', 12, 'La Victoria', 'Llegada NODO-LAVIC', -12.069, -77.026, 'Activo', 0, 0, 1, 1, 0),
+('P-BARR-01-END',   'P-BARR-01', 'Concreto', 'Luz del Sur', 12, 'Barranco', 'Llegada NODO-BARR', -12.140, -77.019, 'Activo', 0, 0, 1, 1, 0);
+
+-- 3.2) Bucle RUTA SANI -> MIRA (15 postes)
+PRINT '... Generando ruta SANI-MIRA (15 postes)';
+SET @i = 1;
+WHILE @i <= 15 BEGIN
+    SET @PoleID = 'P-SM-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'San Isidro', 'Poste intermedio SANI-MIRA', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
 INSERT INTO dbo.mufa (id, code, pole_id, mufa_type, gps_lat, gps_lon) VALUES
-('MUFA-SM', 'MFA-1002', 'P-SM-02', 'Empalme', -12.121, -77.030),
-('MUFA-MS', 'MFA-2002', 'P-MS-02', 'Empalme', -12.137, -77.005),
-('MUFA-SS', 'MFA-3002', 'P-SS-02', 'Empalme', -12.089, -77.049),
-('MUFA-SPLIT', 'MFA-4002-SPLIT', 'P-SPLIT-02', 'Segregacion', -12.140, -77.010);
+('MUFA-SM-05', 'MFA-SM-05', 'P-SM-05', 'Paso', NULL, NULL),
+('MUFA-SM-10', 'MFA-SM-10', 'P-SM-10', 'Paso', NULL, NULL);
 
--- 3.2) Tramos Físicos de Cable (Cable Spans)
-INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span) VALUES
--- Anillo
-('SPAN-SM-01', 'CABLE-SM', 1, 'P-SM-01', 'P-SM-02', 1500, 144, 1500), -- SANI -> MUFA-SM
-('SPAN-MS-01', 'CABLE-MS', 1, 'P-MS-01', 'P-MS-02', 1800, 144, 1800), -- MIRA -> MUFA-MS
-('SPAN-SS-01', 'CABLE-SS', 1, 'P-SS-01', 'P-SS-02', 1200, 144, 1200), -- SURCO -> MUFA-SS
--- Split
-('SPAN-SPLIT-TRONCAL', 'CABLE-TRONCAL-SPLIT', 1, 'P-SPLIT-01', 'P-SPLIT-02', 500, 96, 500), -- SURCO -> MUFA-SPLIT
-('SPAN-SPLIT-LAVIC', 'CABLE-RAMAL-LAVIC', 1, 'P-SPLIT-02', 'P-SL-01', 2000, 48, 2000), -- MUFA-SPLIT -> LAVIC
-('SPAN-SPLIT-BARR', 'CABLE-RAMAL-BARR', 1, 'P-SPLIT-02', 'P-SB-01', 1000, 48, 1000); -- MUFA-SPLIT -> BARR
+-- 3.3) Bucle RUTA MIRA -> SURCO (15 postes)
+PRINT '... Generando ruta MIRA-SURCO (15 postes)';
+SET @i = 1;
+WHILE @i <= 15 BEGIN
+    SET @PoleID = 'P-MS-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'Miraflores', 'Poste intermedio MIRA-SURCO', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.mufa (id, code, pole_id, mufa_type, gps_lat, gps_lon) VALUES
+('MUFA-MS-05', 'MFA-MS-05', 'P-MS-05', 'Paso', NULL, NULL),
+('MUFA-MS-10', 'MFA-MS-10', 'P-MS-10', 'Paso', NULL, NULL);
+
+-- 3.4) Bucle RUTA SURCO -> SANI (15 postes)
+PRINT '... Generando ruta SURCO-SANI (15 postes)';
+SET @i = 1;
+WHILE @i <= 15 BEGIN
+    SET @PoleID = 'P-SS-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'Surco', 'Poste intermedio SURCO-SANI', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.mufa (id, code, pole_id, mufa_type, gps_lat, gps_lon) VALUES
+('MUFA-SS-05', 'MFA-SS-05', 'P-SS-05', 'Paso', NULL, NULL),
+('MUFA-SS-10', 'MFA-SS-10', 'P-SS-10', 'Paso', NULL, NULL);
+
+-- 3.5) Bucle RUTA SURCO -> SPLIT (10 postes)
+PRINT '... Generando ruta SURCO-SPLIT (10 postes)';
+SET @i = 1;
+WHILE @i <= 10 BEGIN
+    SET @PoleID = 'P-TRONCAL-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'Surco', 'Poste Troncal Split', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
+-- La mufa del split va en el último poste de este tramo
+INSERT INTO dbo.mufa (id, code, pole_id, mufa_type, gps_lat, gps_lon) VALUES
+('MUFA-SPLIT', 'MFA-SPLIT-001', 'P-TRONCAL-10', 'Segregacion', NULL, NULL);
+
+-- 3.6) Bucle RUTA SPLIT -> LAVIC (10 postes)
+PRINT '... Generando ruta SPLIT-LAVIC (10 postes)';
+SET @i = 1;
+WHILE @i <= 10 BEGIN
+    SET @PoleID = 'P-LAVIC-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'La Victoria', 'Poste Ramal La Victoria', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
+
+-- 3.7) Bucle RUTA SPLIT -> BARR (10 postes)
+PRINT '... Generando ruta SPLIT-BARR (10 postes)';
+SET @i = 1;
+WHILE @i <= 10 BEGIN
+    SET @PoleID = 'P-BARR-' + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.pole (id, code, pole_type, owner, high, district, address_ref, gps_lat, gps_lon, status, has_reserve, reserve_length_m, has_cruceta, has_elem_retencion, has_elem_suspension)
+    VALUES (@PoleID, @PoleID, 'Concreto', 'Luz del Sur', 12, 'Barranco', 'Poste Ramal Barranco', NULL, NULL, 'Activo', 0, 0, 1, 1, 1);
+    SET @i = @i + 1;
+END;
 
 
 /*============================================================
-FASE 4: CREAR FILAMENTOS (CON BUCLES)
+FASE 4: GENERACIÓN MASIVA DE TRAMOS DE CABLE (CABLE SPANS)
 ============================================================*/
 
-PRINT 'FASE 4: Generando filamentos (Esto puede tardar un momento)...';
+PRINT 'FASE 4: Generando CABLE SPANS...';
+
+-- 4.1) RUTA SANI -> MIRA (16 tramos)
+SET @i = 1; SET @CableID = 'CABLE-SM'; SET @SpanPrefix = 'SPAN-SM-'; SET @PolePrefix = 'P-SM-'; SET @FromPoleID = 'P-SANI-01-START';
+WHILE @i <= 15 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 144, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+-- Tramo final
+INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+VALUES ('SPAN-SM-16', @CableID, 16, @FromPoleID, 'P-MIRA-01-END', 100, 144, 100);
+
+-- 4.2) RUTA MIRA -> SURCO (16 tramos)
+SET @i = 1; SET @CableID = 'CABLE-MS'; SET @SpanPrefix = 'SPAN-MS-'; SET @PolePrefix = 'P-MS-'; SET @FromPoleID = 'P-MIRA-02-START';
+WHILE @i <= 15 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 144, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+VALUES ('SPAN-MS-16', @CableID, 16, @FromPoleID, 'P-SURCO-01-END', 100, 144, 100);
+
+-- 4.3) RUTA SURCO -> SANI (16 tramos)
+SET @i = 1; SET @CableID = 'CABLE-SS'; SET @SpanPrefix = 'SPAN-SS-'; SET @PolePrefix = 'P-SS-'; SET @FromPoleID = 'P-SURCO-02-START';
+WHILE @i <= 15 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 144, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+VALUES ('SPAN-SS-16', @CableID, 16, @FromPoleID, 'P-SANI-02-START', 100, 144, 100);
+
+-- 4.4) RUTA SURCO -> SPLIT (10 tramos)
+SET @i = 1; SET @CableID = 'CABLE-TRONCAL-SPLIT'; SET @SpanPrefix = 'SPAN-TRONCAL-'; SET @PolePrefix = 'P-TRONCAL-'; SET @FromPoleID = 'P-SURCO-03-START';
+WHILE @i <= 10 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 96, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+
+-- 4.5) RUTA SPLIT -> LAVIC (11 tramos)
+SET @i = 1; SET @CableID = 'CABLE-RAMAL-LAVIC'; SET @SpanPrefix = 'SPAN-LAVIC-'; SET @PolePrefix = 'P-LAVIC-'; SET @FromPoleID = 'P-TRONCAL-10'; -- Inicia donde terminó el troncal
+WHILE @i <= 10 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 48, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+VALUES ('SPAN-LAVIC-11', @CableID, 11, @FromPoleID, 'P-LAVIC-01-END', 100, 48, 100);
+
+-- 4.6) RUTA SPLIT -> BARR (11 tramos)
+SET @i = 1; SET @CableID = 'CABLE-RAMAL-BARR'; SET @SpanPrefix = 'SPAN-BARR-'; SET @PolePrefix = 'P-BARR-'; SET @FromPoleID = 'P-TRONCAL-10'; -- Inicia donde terminó el troncal
+WHILE @i <= 10 BEGIN
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    SET @ToPoleID = @PolePrefix + FORMAT(@i, '00'); -- CORREGIDO: Añadido SET
+    INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+    VALUES (@SpanID, @CableID, @i, @FromPoleID, @ToPoleID, 100, 48, 100);
+    SET @FromPoleID = @ToPoleID;
+    SET @i = @i + 1;
+END;
+INSERT INTO dbo.cable_span (id, cable_id, seq, from_pole_id, to_pole_id, length_m, capacity_fibers, length_span)
+VALUES ('SPAN-BARR-11', @CableID, 11, @FromPoleID, 'P-BARR-01-END', 100, 48, 100);
+
+
+/*============================================================
+FASE 5: GENERAR FILAMENTOS
+============================================================*/
+
+PRINT 'FASE 5: Generando filamentos...';
 
 -- Bucle para CABLE-SM (144)
 SET @i = 1; SET @CableID = 'CABLE-SM'; SET @FilamentPrefix = 'FF-SM-';
@@ -221,60 +371,20 @@ WHILE @i <= 48 BEGIN
 END;
 
 /*============================================================
-FASE 5: CREAR EMPALMES (SPLICES)
+FASE 6: CREAR EMPALMES (SPLICES)
 ============================================================*/
 
-PRINT 'FASE 5: Creando empalmes...';
-
--- 5.1) Empalmes del Anillo (Passthrough simple Hilo 1 -> Hilo 1)
--- MUFA-SM (Conecta CABLE-SM Hilo 1 con CABLE-MS Hilo 1)
-INSERT INTO dbo.splice (id, mufa_id, a_fiber_filament_id, b_fiber_filament_id)
-VALUES ('SPL-SM-001', 'MUFA-SM', 'FF-SM-001', 'FF-MS-001');
-
--- MUFA-MS (Conecta CABLE-MS Hilo 1 con CABLE-SS Hilo 1)
-INSERT INTO dbo.splice (id, mufa_id, a_fiber_filament_id, b_fiber_filament_id)
-VALUES ('SPL-MS-001', 'MUFA-MS', 'FF-MS-001', 'FF-SS-001'); -- Aquí hay un error de diseño del anillo, un cable no puede estar en 2 mufas.
--- CORRECCIÓN DE DISEÑO: Un cable va DE ODF A MUFA. El siguiente cable va DE MUFA A ODF.
--- Vamos a re-crear los empalmes del anillo correctamente.
-DELETE FROM dbo.splice WHERE id IN ('SPL-SM-001', 'SPL-MS-001');
-
--- SANI -> MIRA (Usa Hilo 1 de CABLE-SM y Hilo 1 de CABLE-MS, unidos en MUFA-SM)
-INSERT INTO dbo.splice (id, mufa_id, a_fiber_filament_id, b_fiber_filament_id)
-VALUES ('SPL-RING-SM', 'MUFA-SM', 'FF-SM-001', 'FF-MS-001');
-
--- MIRA -> SURCO (Usa Hilo 1 de CABLE-MS y Hilo 1 de CABLE-SS, unidos en MUFA-MS)
--- ¡Espera! El CABLE-MS no puede terminar en NODO-MIRA y a la vez en MUFA-MS.
--- ¡Ah! El CABLE-MS debe ir de MUFA-SM a MUFA-MS. Los cables de ODF deben ser otros.
-
--- =========================================================================
--- RE-PLANIFICACIÓN DE CABLES (Más simple y correcto):
--- Un cable por cada ruta ODF-ODF. Los empalmes se hacen en las mufas.
--- SANI-MIRA: CABLE-SM (pasa por MUFA-SM)
--- MIRA-SURCO: CABLE-MS (pasa por MUFA-MS)
--- SURCO-SANI: CABLE-SS (pasa por MUFA-SS)
--- Esto significa que la MUFA no une cables diferentes, solo es un punto de paso.
--- El SPLICE es para UNIR filamentos. El escenario del anillo es más simple:
--- El Hilo 1 de CABLE-SM conecta ODF-SANI-01 y ODF-MIRA-01.
--- El Hilo 1 de CABLE-MS conecta ODF-MIRA-02 y ODF-SURCO-01.
--- El Hilo 1 de CABLE-SS conecta ODF-SURCO-02 y ODF-SANI-02.
--- Por lo tanto, ¡NO HAY EMPALMES PARA EL ANILLO! (Son rutas directas)
--- =========================================================================
-
-DELETE FROM dbo.splice; -- Limpiamos los empalmes erróneos del anillo.
-
--- 5.2) Empalmes del SPLIT (¡Este es el escenario importante!)
--- En MUFA-SPLIT, el CABLE-TRONCAL-SPLIT (96) se divide en:
---   -> CABLE-RAMAL-LAVIC (48)
---   -> CABLE-RAMAL-BARR (48)
-
-PRINT 'FASE 5.2: Creando empalmes del SPLIT...';
+PRINT 'FASE 6: Creando empalmes del SPLIT...';
+-- NOTA: No creamos empalmes para las mufas de paso del anillo,
+-- asumimos que los filamentos pasan directo (pass-through).
+-- Solo creamos empalmes para la MUFA-SPLIT, donde los cables cambian.
 
 -- Bucle 1: Conectar Hilos 1-48 del Troncal a LAVIC
 SET @i = 1;
 WHILE @i <= 48 BEGIN
-    DECLARE @SpliceID_A NVARCHAR(64) = 'SPL-LAVIC-' + FORMAT(@i, '000');
-    DECLARE @Fiber_A NVARCHAR(64) = 'FF-TRONCAL-' + FORMAT(@i, '000');
-    DECLARE @Fiber_B NVARCHAR(64) = 'FF-LAVIC-' + FORMAT(@i, '000');
+    SET @SpliceID_A = 'SPL-LAVIC-' + FORMAT(@i, '000'); -- CORREGIDO: Añadido SET y quitado DECLARE
+    SET @Fiber_A = 'FF-TRONCAL-' + FORMAT(@i, '000'); -- CORREGIDO
+    SET @Fiber_B = 'FF-LAVIC-' + FORMAT(@i, '000'); -- CORREGIDO
     
     INSERT INTO dbo.splice (id, mufa_id, a_fiber_filament_id, b_fiber_filament_id)
     VALUES (@SpliceID_A, 'MUFA-SPLIT', @Fiber_A, @Fiber_B);
@@ -287,9 +397,9 @@ SET @i = 49;
 WHILE @i <= 96 BEGIN
     SET @FilamentNo = @i - 48; -- El Hilo 49 del troncal va al Hilo 1 de Barranco
     
-    DECLARE @SpliceID_B NVARCHAR(64) = 'SPL-BARR-' + FORMAT(@FilamentNo, '000');
-    DECLARE @Fiber_A_B NVARCHAR(64) = 'FF-TRONCAL-' + FORMAT(@i, '000');
-    DECLARE @Fiber_B_B NVARCHAR(64) = 'FF-BARR-' + FORMAT(@FilamentNo, '000');
+    SET @SpliceID_B = 'SPL-BARR-' + FORMAT(@FilamentNo, '000'); -- CORREGIDO
+    SET @Fiber_A_B = 'FF-TRONCAL-' + FORMAT(@i, '000'); -- CORREGIDO
+    SET @Fiber_B_B = 'FF-BARR-' + FORMAT(@FilamentNo, '000'); -- CORREGIDO
     
     INSERT INTO dbo.splice (id, mufa_id, a_fiber_filament_id, b_fiber_filament_id)
     VALUES (@SpliceID_B, 'MUFA-SPLIT', @Fiber_A_B, @Fiber_B_B);
@@ -297,52 +407,44 @@ WHILE @i <= 96 BEGIN
     SET @i = @i + 1;
 END;
 
-
 /*============================================================
-FASE 6: CONECTAR CABLES A ODFS (Inicio y Fin de Rutas)
+FASE 7: CONECTAR CABLES A ODFS
 ============================================================*/
 
-PRINT 'FASE 6: Conectando cables y filamentos a ODFs...';
+PRINT 'FASE 7: Conectando cables y filamentos a ODFs...';
 
--- 6.1) odf_cable_end (Qué cable llega a qué ODF)
+-- 7.1) odf_cable_end
 INSERT INTO dbo.odf_cable_end (id, cable_id, odf_id) VALUES
--- Anillo
 ('OCE-SANI-01', 'CABLE-SM', 'ODF-SANI-01'),
 ('OCE-MIRA-01', 'CABLE-SM', 'ODF-MIRA-01'),
 ('OCE-MIRA-02', 'CABLE-MS', 'ODF-MIRA-02'),
 ('OCE-SURCO-01', 'CABLE-MS', 'ODF-SURCO-01'),
 ('OCE-SURCO-02', 'CABLE-SS', 'ODF-SURCO-02'),
 ('OCE-SANI-02', 'CABLE-SS', 'ODF-SANI-02'),
--- Split
 ('OCE-SPLIT-TRONCAL', 'CABLE-TRONCAL-SPLIT', 'ODF-SURCO-01'),
 ('OCE-SPLIT-LAVIC', 'CABLE-RAMAL-LAVIC', 'ODF-LAVIC-01'),
 ('OCE-SPLIT-BARR', 'CABLE-RAMAL-BARR', 'ODF-BARR-01');
 
--- 6.2) odf_port_fiber (Qué puerto ODF usa qué filamento)
+-- 7.2) odf_port_fiber
 INSERT INTO dbo.odf_port_fiber (id, odf_port_id, fiber_filament_id, direction) VALUES
--- Anillo
 ('OPF-SANI-01', 'OP-SANI-01-P1', 'FF-SM-001', 'A'),
 ('OPF-MIRA-01', 'OP-MIRA-01-P1', 'FF-SM-001', 'B'),
 ('OPF-MIRA-02', 'OP-MIRA-02-P1', 'FF-MS-001', 'A'),
 ('OPF-SURCO-01', 'OP-SURCO-01-P1', 'FF-MS-001', 'B'),
 ('OPF-SURCO-02', 'OP-SURCO-02-P1', 'FF-SS-001', 'A'),
 ('OPF-SANI-02', 'OP-SANI-02-P1', 'FF-SS-001', 'B'),
--- Split
-('OPF-SURCO-LAVIC', 'OP-SURCO-01-P2', 'FF-TRONCAL-001', 'A'), -- Hilo 1 del troncal
-('OPF-LAVIC', 'OP-LAVIC-01-P1', 'FF-LAVIC-001', 'B'), -- Hilo 1 de lavic
-('OPF-SURCO-BARR', 'OP-SURCO-01-P3', 'FF-TRONCAL-049', 'A'), -- Hilo 49 del troncal
-('OPF-BARR', 'OP-BARR-01-P1', 'FF-BARR-001', 'B'); -- Hilo 1 de barranco
-
+('OPF-SURCO-LAVIC', 'OP-SURCO-01-P2', 'FF-TRONCAL-001', 'A'),
+('OPF-LAVIC', 'OP-LAVIC-01-P1', 'FF-LAVIC-001', 'B'),
+('OPF-SURCO-BARR', 'OP-SURCO-01-P3', 'FF-TRONCAL-049', 'A'),
+('OPF-BARR', 'OP-BARR-01-P1', 'FF-BARR-001', 'B');
 
 /*============================================================
-FASE 7: CREAR RUTAS LÓGICAS (Servicios)
+FASE 8: GENERACIÓN MASIVA DE RUTAS LÓGICAS (SEGMENTOS)
 ============================================================*/
--- Esto es para el algoritmo de diagnóstico. Mapea las rutas lógicas
--- a los tramos físicos.
 
-PRINT 'FASE 7: Creando rutas lógicas y segmentos...';
+PRINT 'FASE 8: Creando rutas lógicas y segmentos...';
 
--- 7.1) odf_route (Las rutas de servicio)
+-- 8.1) odf_route (Las rutas de servicio)
 INSERT INTO dbo.odf_route (id, from_odf_id, to_odf_id, path_text) VALUES
 ('ROUTE-SANI-MIRA', 'ODF-SANI-01', 'ODF-MIRA-01', 'Ruta Backbone SANI-MIRA'),
 ('ROUTE-MIRA-SURCO', 'ODF-MIRA-02', 'ODF-SURCO-01', 'Ruta Backbone MIRA-SURCO'),
@@ -350,22 +452,91 @@ INSERT INTO dbo.odf_route (id, from_odf_id, to_odf_id, path_text) VALUES
 ('ROUTE-SURCO-LAVIC', 'ODF-SURCO-01', 'ODF-LAVIC-01', 'Ruta Acceso SURCO-LAVIC'),
 ('ROUTE-SURCO-BARR', 'ODF-SURCO-01', 'ODF-BARR-01', 'Ruta Acceso SURCO-BARR');
 
--- 7.2) odf_route_segment (Qué tramos físicos usa cada ruta)
-INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq) VALUES
--- Anillo
-('SEG-SM-01', 'ROUTE-SANI-MIRA', 'SPAN-SM-01', 1),
-('SEG-MS-01', 'ROUTE-MIRA-SURCO', 'SPAN-MS-01', 1),
-('SEG-SS-01', 'ROUTE-SURCO-SANI', 'SPAN-SS-01', 1),
--- Split
-('SEG-SL-01', 'ROUTE-SURCO-LAVIC', 'SPAN-SPLIT-TRONCAL', 1),
-('SEG-SL-02', 'ROUTE-SURCO-LAVIC', 'SPAN-SPLIT-LAVIC', 2),
-('SEG-SB-01', 'ROUTE-SURCO-BARR', 'SPAN-SPLIT-TRONCAL', 1),
-('SEG-SB-02', 'ROUTE-SURCO-BARR', 'SPAN-SPLIT-BARR', 2);
+-- 8.2) odf_route_segment (Bucle para mapear spans a rutas)
+
+-- Ruta SANI -> MIRA (16 segmentos)
+PRINT '... Mapeando segmentos SANI-MIRA';
+SET @i = 1; SET @RouteID = 'ROUTE-SANI-MIRA'; SET @SpanPrefix = 'SPAN-SM-';
+WHILE @i <= 16 BEGIN
+    SET @SegID = 'SEG-SM-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @i);
+    SET @i = @i + 1;
+END;
+
+-- Ruta MIRA -> SURCO (16 segmentos)
+PRINT '... Mapeando segmentos MIRA-SURCO';
+SET @i = 1; SET @RouteID = 'ROUTE-MIRA-SURCO'; SET @SpanPrefix = 'SPAN-MS-';
+WHILE @i <= 16 BEGIN
+    SET @SegID = 'SEG-MS-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @i);
+    SET @i = @i + 1;
+END;
+
+-- Ruta SURCO -> SANI (16 segmentos)
+PRINT '... Mapeando segmentos SURCO-SANI';
+SET @i = 1; SET @RouteID = 'ROUTE-SURCO-SANI'; SET @SpanPrefix = 'SPAN-SS-';
+WHILE @i <= 16 BEGIN
+    SET @SegID = 'SEG-SS-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @i);
+    SET @i = @i + 1;
+END;
+
+-- Ruta SURCO -> LAVIC (10 troncales + 11 ramales = 21 segmentos)
+PRINT '... Mapeando segmentos SURCO-LAVIC';
+SET @seq = 1;
+-- Parte Troncal
+SET @i = 1; SET @RouteID = 'ROUTE-SURCO-LAVIC'; SET @SpanPrefix = 'SPAN-TRONCAL-';
+WHILE @i <= 10 BEGIN
+    SET @SegID = 'SEG-SL-T-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @seq);
+    SET @i = @i + 1; SET @seq = @seq + 1;
+END;
+-- Parte Ramal
+SET @i = 1; SET @SpanPrefix = 'SPAN-LAVIC-';
+WHILE @i <= 11 BEGIN
+    SET @SegID = 'SEG-SL-R-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @seq);
+    SET @i = @i + 1; SET @seq = @seq + 1;
+END;
+
+-- Ruta SURCO -> BARR (10 troncales + 11 ramales = 21 segmentos)
+PRINT '... Mapeando segmentos SURCO-BARR';
+SET @seq = 1;
+-- Parte Troncal
+SET @i = 1; SET @RouteID = 'ROUTE-SURCO-BARR'; SET @SpanPrefix = 'SPAN-TRONCAL-';
+WHILE @i <= 10 BEGIN
+    SET @SegID = 'SEG-SB-T-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    -- Nota: Múltiples rutas (LAVIC y BARR) usan los mismos spans troncales
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @seq);
+    SET @i = @i + 1; SET @seq = @seq + 1;
+END;
+-- Parte Ramal
+SET @i = 1; SET @SpanPrefix = 'SPAN-BARR-';
+WHILE @i <= 11 BEGIN
+    SET @SegID = 'SEG-SB-R-' + FORMAT(@i, '00'); -- CORREGIDO
+    SET @SpanID = @SpanPrefix + FORMAT(@i, '00'); -- CORREGIDO
+    INSERT INTO dbo.odf_route_segment (id, odf_route_id, cable_span_id, seq)
+    VALUES (@SegID, @RouteID, @SpanID, @seq);
+    SET @i = @i + 1; SET @seq = @seq + 1;
+END;
 
 
 PRINT '==================================================';
-PRINT 'DATOS INSERTADOS CORRECTAMENTE.';
-PRINT 'Escenario Creado: Anillo de 3 Nodos y Split de 1 a 2.';
+PRINT 'DATOS MASIVOS INSERTADOS CORRECTAMENTE.';
+PRINT 'Total de postes insertados: ~90+';
+PRINT 'Total de tramos (spans) insertados: ~96';
 PRINT '==================================================';
 
 -- Si todo salió bien, confirma la transacción
@@ -380,4 +551,6 @@ BEGIN CATCH
     ROLLBACK TRANSACTION;
 END CATCH;
 
+GO
+SET NOCOUNT OFF;
 GO
