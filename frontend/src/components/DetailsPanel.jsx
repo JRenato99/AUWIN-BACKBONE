@@ -1,84 +1,216 @@
-import React from "react";
+import { useEffect, useState } from "react";
+import api from "../api/client";
 
 export default function DetailsPanel({ selected }) {
-  if (!selected) return null;
-  const isNode = !!selected?.node;
-  const isEdge = !!selected?.edge;
+  const [state, setState] = useState({
+    loading: false,
+    error: "",
+    data: null,
+  });
+
+  const { loading, error, data } = state;
+
+  const selNode = selected?.node || null;
+  const selEdge = selected?.edge || null;
+
+  useEffect(() => {
+    // Si no hay nada seleccionado: no hago fetch
+    if (!selNode && !selEdge) {
+      setState({ loading: false, error: "", data: null });
+      return;
+    }
+
+    // Por ahora implementamos POLE; deja stub para otros tipos
+    const kind = selNode?.kind || selEdge?.edge_kind || null;
+
+    async function load() {
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      try {
+        let newData = null;
+
+        if (selNode) {
+          if (kind === "POLE") {
+            const r = await api.get(
+              `/topology/poles/${encodeURIComponent(selNode.id)}/details`
+            );
+            newData = { kind: "POLE", details: r.data };
+          } else {
+            newData = { kind, raw: selNode };
+          }
+        } else if (selEdge) {
+          newData = { kind: selEdge.edge_kind || "EDGE", raw: selEdge };
+        }
+        setState({ loading: false, error: "", data: newData });
+      } catch (e) {
+        const msg =
+          e?.response?.data?.detail || e?.message || "Error cargando detalles";
+        setState({ loading: false, error: msg, data: null });
+      }
+    }
+
+    load();
+  }, [selNode, selEdge]);
 
   return (
-    <div className="card">
-      <b>Detalle</b>
+    <div className="card" style={{ marginTop: 12 }}>
+      <h3 style={{ margin: 0 }}>Detalles</h3>
 
-      {isNode && (
-        <>
-          <div style={{ marginTop: 8 }}>
-            <div>
-              <b>ID:</b> {selected.node?.id ?? "-"}
-            </div>
-            <div>
-              <b>Tipo:</b> {selected.node?.kind ?? "-"}
-            </div>
-            <div>
-              <b>Layer:</b> {selected.node?.layer ?? "-"}
-            </div>
-            <div>
-              <b>Status:</b> {selected.node?.status ?? "-"}
-            </div>
-            {selected.node?.label && (
-              <div>
-                <b>Label:</b> {selected.node.label}
-              </div>
-            )}
-          </div>
-
-          {selected.node?.meta?.gps_lat != null && (
-            <div>
-              <b>GPS:</b> {selected.node.meta.gps_lat},{" "}
-              {selected.node.meta.gps_lon}
-            </div>
-          )}
-
-          {selected.node?.meta?.reference && (
-            <div>
-              <b>Referencia:</b> {selected.node.meta.reference}
-            </div>
-          )}
-          {!!selected.node?.meta && (
-            <pre className="code-block" style={{ marginTop: 8 }}>
-              {JSON.stringify(selected.node.meta, null, 2)}
-            </pre>
-          )}
-        </>
+      {!selNode && !selEdge && (
+        <div className="muted" style={{ marginTop: 6 }}>
+          Selecciona un nodo o un segmento.
+        </div>
       )}
 
-      {isEdge && (
-        <>
-          <div style={{ marginTop: 8 }}>
-            <div>
-              <b>ID:</b> {selected.edge?.id ?? "-"}
-            </div>
-            <div>
-              <b>Tipo de arista:</b> {selected.edge?.edge_kind ?? "-"}
-            </div>
-            <div>
-              <b>Desde:</b> {selected.edge?.from ?? "-"}
-            </div>
-            <div>
-              <b>Hacia:</b> {selected.edge?.to ?? "-"}
-            </div>
-            {selected.edge?.title && (
-              <div>
-                <b>Detalle:</b> {selected.edge.title}
-              </div>
-            )}
-          </div>
+      {loading && <div style={{ marginTop: 6 }}>Cargando…</div>}
 
-          {!!selected.edge?.meta && (
-            <pre className="code-block" style={{ marginTop: 8 }}>
-              {JSON.stringify(selected.edge.meta, null, 2)}
-            </pre>
-          )}
-        </>
+      {!!error && (
+        <div style={{ marginTop: 6, color: "#b91c1c" }}>{String(error)}</div>
+      )}
+
+      {/* POLE */}
+      {data?.kind === "POLE" && data.details && (
+        <div style={{ marginTop: 8 }}>
+          <PoleDetails d={data.details} />
+        </div>
+      )}
+
+      {/* Otros tipos (aún sin endpoint dedicado) */}
+      {data && data.kind !== "POLE" && data.raw && (
+        <pre className="code-block" style={{ marginTop: 8 }}>
+          {JSON.stringify(data.raw, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function PoleDetails({ d }) {
+  const p = d.pole[0] || {};
+  const s = d.summary || {};
+  const mufas = d.mufas || [];
+  const spans = d.spans || [];
+  const cables = d.cables || [];
+  const neighbors = d.neighbors || [];
+
+  return (
+    <div className="stack">
+      <div>
+        <b>Pole</b>
+        <ul className="compact">
+          <li>
+            <b>ID:</b> {p.id}
+          </li>
+          <li>
+            <b>Código:</b> {p.code}
+          </li>
+          <li>
+            <b>Tipo:</b> {p.pole_type}
+          </li>
+          <li>
+            <b>Owner:</b> {p.owner ?? "-"}
+          </li>
+          <li>
+            <b>Distrito:</b> {p.district ?? "-"}
+          </li>
+          <li>
+            <b>Dirección ref:</b> {p.address_ref ?? "-"}
+          </li>
+          <li>
+            <b>GPS:</b> {p.gps_lat ?? "-"}, {p.gps_lon ?? "-"}
+          </li>
+          <li>
+            <b>Estado:</b> {p.status ?? "-"}
+          </li>
+          <li>
+            <b>Altura:</b> {p.high ?? "-"}
+          </li>
+          <li>
+            <b>Cruceta:</b> {p.has_cruceta ? "Sí" : "No"}
+          </li>
+          <li>
+            <b>Reserva:</b>{" "}
+            {p.has_reserve ? `Sí (${p.reserve_length_m ?? "?"} m)` : "No"}
+          </li>
+          <li>
+            <b>Elem. retención:</b> {p.has_elem_retencion ? "Sí" : "No"}
+          </li>
+          <li>
+            <b>Elem. suspensión:</b> {p.has_elem_suspension ? "Sí" : "No"}
+          </li>
+          <li>
+            <b>Declarado:</b> {p.declared ? "Sí" : "No"}
+          </li>
+        </ul>
+      </div>
+
+      <div className="badge">
+        Mufas: {s.mufa_count} | Spans: {s.span_count} | Longitud total:{" "}
+        {Math.round(s.total_length_m || 0)} m | Cables: {s.cable_count} |
+        Vecinos: {s.neighbor_count}
+      </div>
+
+      {mufas.length > 0 && (
+        <details>
+          <summary>
+            <b>Mufas ({mufas.length})</b>
+          </summary>
+          <ul className="compact">
+            {mufas.map((m) => (
+              <li key={m.id}>
+                {m.code} — tipo: {m.mufa_type} — empalmes: {m.splice_count}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {spans.length > 0 && (
+        <details>
+          <summary>
+            <b>Empalmes conectados ({spans.length})</b>
+          </summary>
+          <ul className="compact">
+            {spans.map((sp) => (
+              <li key={sp.id}>
+                [{sp.seq}] {sp.id} — cable {sp.cable_code} ({sp.fiber_count}f) —{" "}
+                {sp.from_pole_id} → {sp.to_pole_id} —{" "}
+                {Math.round(sp.length_m || 0)} m
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {cables.length > 0 && (
+        <details>
+          <summary>
+            <b>Cables ({cables.length})</b>
+          </summary>
+          <ul className="compact">
+            {cables.map((c) => (
+              <li key={c.id}>
+                {c.code} — {c.fiber_count}f — {c.material_type ?? "-"} /{" "}
+                {c.jacket_type ?? "-"}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {neighbors.length > 0 && (
+        <details>
+          <summary>
+            <b>Postes vecinos ({neighbors.length})</b>
+          </summary>
+          <ul className="compact">
+            {neighbors.map((n) => (
+              <li key={n.via_span_id}>
+                {n.neighbor_pole_code} (via {n.via_span_id}) —{" "}
+                {Math.round(n.length_m || 0)} m
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );

@@ -169,7 +169,7 @@ LEFT JOIN dbo.pole tp
 -- Vista unificada de nodos del grafo
 CREATE OR ALTER VIEW dbo.vw_graph_nodes AS 
 -- ODF
-SELECT CONCAT('ODF:', o.id)       AS id,
+SELECT (o.id)       AS id,
        'ODF'                      AS kind,
        o.name                     AS label,
        n.id                       AS site_id,
@@ -181,7 +181,7 @@ JOIN dbo.nodo n ON n.id = o.nodo_id
 
 UNION ALL
 -- ROUTER
-SELECT CONCAT('RTR:', r.id),
+SELECT (r.id),
        'RTR',
        r.name,
        n.id,
@@ -193,7 +193,7 @@ JOIN dbo.nodo n ON n.id = r.nodo_id
 
 UNION ALL
 -- POSTE
-SELECT CONCAT('POSTE:', p.id),
+SELECT (p.id),
        'POSTE',
        p.code,
        NULL,
@@ -204,7 +204,7 @@ FROM dbo.pole p
 
 UNION ALL
 -- MUFA (usa coordenadas del poste)
-SELECT CONCAT('MUFA:', m.id),
+SELECT (m.id),
        'MUFA',
        m.code,
        NULL,

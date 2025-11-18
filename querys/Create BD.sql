@@ -92,7 +92,7 @@ CREATE TABLE dbo.pole (
   code NVARCHAR(128) NOT NULL,
   pole_type NVARCHAR(32) NOT NULL,
   owner NVARCHAR(100) NULL,
-  high FLOAT NULL,  
+  heigh_m FLOAT NULL,  
   district NVARCHAR(100) NULL,
   address_ref NVARCHAR(400) NULL,
   gps_lat FLOAT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE dbo.pole (
   has_cruceta  BIT NOT NULL,
   has_elem_retencion  BIT NOT NULL,
   has_elem_suspension  BIT NOT NULL,
-  declared BIT NULL,
+  declared BIT NULL
 );
 GO
 
@@ -124,7 +124,7 @@ CREATE TABLE dbo.odf_cable_end (
   cable_id      NVARCHAR(64)  NOT NULL,
   odf_id        NVARCHAR(64)  NOT NULL,            
   CONSTRAINT FK_OCE_Cable   FOREIGN KEY (cable_id)    REFERENCES dbo.cable(id),
-  CONSTRAINT FK_OCE_ODF     FOREIGN KEY (odf_id)      REFERENCES dbo.odf(id),
+  CONSTRAINT FK_OCE_ODF     FOREIGN KEY (odf_id)      REFERENCES dbo.odf(id)
 );
 GO
 
