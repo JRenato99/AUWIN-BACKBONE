@@ -189,12 +189,10 @@ export default function RouteDetailGraph({ route, onSelect }) {
           setSelectedNodeId(nodeId);
           setSelectedEdgeId(null);
           payload.pinned = { type: "node", id: nodeId };
-          console.log(payload);
         } else if (edgeId) {
           setSelectedEdgeId(edgeId);
           setSelectedNodeId(null);
           payload.pinned = { type: "edge", id: edgeId };
-          console.log(payload);
         }
         //setSelectMode(false);
       }

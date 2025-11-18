@@ -4,6 +4,7 @@ import {
   Navigate,
   useNavigate,
   useLocation,
+  useParams,
 } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
 
@@ -23,6 +24,37 @@ function useViewFromLocation() {
   const { pathname } = useLocation();
   return pathname.startsWith("/routes") ? "route" : "overview";
 }
+
+const SidebarBlock = ({
+  showHeader = true,
+  loadingRoutes,
+  routes,
+  selected,
+  onOpenRoute,
+}) => (
+  <>
+    {showHeader && (
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Rutas Lógicas</h3>
+        <p style={{ opacity: 0.7, marginTop: 4 }}>
+          Selecciona una para ver su planta externa.
+        </p>
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+          {loadingRoutes ? "Cargando…" : `Total: ${routes.length}`}
+        </div>
+      </div>
+    )}
+
+    <DetailsPanel selected={selected} />
+
+    <RouteList routes={routes} onOpenRoute={onOpenRoute} />
+  </>
+);
+
+const RouteDetailWrapper = ({ onSelect }) => {
+  const { routeId } = useParams();
+  return <RouteDetailGraph route={{ id: routeId }} onSelect={onSelect} />;
+};
 
 export default function App() {
   const navigate = useNavigate();
@@ -72,26 +104,6 @@ export default function App() {
     navigate(`/routes/${encodeURIComponent(r.id)}`);
   };
 
-  const SidebarBlock = ({ showHeader = true }) => (
-    <>
-      {showHeader && (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Rutas Lógicas</h3>
-          <p style={{ opacity: 0.7, marginTop: 4 }}>
-            Selecciona una para ver su planta externa.
-          </p>
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-            {loadingRoutes ? "Cargando…" : `Total: ${routes.length}`}
-          </div>
-        </div>
-      )}
-
-      <DetailsPanel selected={selected} />
-
-      <RouteList routes={routes} onOpenRoute={openRoute} />
-    </>
-  );
-
   return (
     <div
       className="app"
@@ -119,7 +131,13 @@ export default function App() {
                   }}
                 >
                   <div className="sidebar" style={{ overflowY: "auto" }}>
-                    <SidebarBlock showHeader />
+                    <SidebarBlock
+                      showHeader={true}
+                      loadingRoutes={loadingRoutes}
+                      routes={routes}
+                      selected={selected}
+                      onOpenRoute={openRoute}
+                    />
                   </div>
 
                   <div
@@ -158,7 +176,13 @@ export default function App() {
                   }}
                 >
                   <div className="sidebar" style={{ overflowY: "auto" }}>
-                    <SidebarBlock showHeader={false} />
+                    <SidebarBlock
+                      showHeader={false}
+                      loadingRoutes={loadingRoutes}
+                      routes={routes}
+                      selected={selected}
+                      onOpenRoute={openRoute}
+                    />
                   </div>
 
                   <div
@@ -169,10 +193,7 @@ export default function App() {
                       height: "100%",
                     }}
                   >
-                    <RouteDetailGraph
-                      route={{ id: window.location.pathname.split("/").pop() }}
-                      onSelect={(s) => setSelected(s)}
-                    />
+                    <RouteDetailWrapper onSelect={(s) => setSelected(s)} />
                   </div>
                 </div>
               }
