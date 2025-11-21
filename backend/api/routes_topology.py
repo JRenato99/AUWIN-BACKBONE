@@ -53,12 +53,13 @@ def route_graph(route_id: str):
     # segmentos de la ruta ordenados
     segs = fetch_all(
         """
-    SELECT odf_route_id, seg_seq, cable_span_id, cable_id, cable_seq,
-        from_pole_id, from_pole_code, to_pole_id, to_pole_code, length_m
-    FROM dbo.vw_route_segments_expanded
-    WHERE odf_route_id = :rid
-    ORDER BY seg_seq
-    """,
+            SELECT odf_route_id, seg_seq, cable_span_id, cable_id, cable_seq,
+            from_pole_id, from_pole_code, to_pole_id, to_pole_code, length_m,length_span,
+            capacity_fibers
+            FROM dbo.vw_route_segments_expanded
+            WHERE odf_route_id = :rid
+            ORDER BY seg_seq
+        """,
         rid=route_id,
     )
     if not segs:
@@ -67,14 +68,14 @@ def route_graph(route_id: str):
     # extremos ODF (from/to)
     ends_rows = fetch_all(
         """
-    SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
-        o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
-        o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
-    FROM dbo.odf_route r
-    JOIN dbo.odf o1 on o1.id = r.from_odf_id
-    JOIN dbo.odf o2 on o2.id = r.to_odf_id
-    WHERE r.id = :rid
-    """,
+            SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
+                o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
+                o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
+            FROM dbo.odf_route r
+            JOIN dbo.odf o1 on o1.id = r.from_odf_id
+            JOIN dbo.odf o2 on o2.id = r.to_odf_id
+            WHERE r.id = :rid
+        """,
         rid=route_id,
     )
     if not ends_rows:
@@ -93,9 +94,9 @@ def route_graph(route_id: str):
     poles = []
     if ordered_poles:
         q = """
-        SELECT id, code, gps_lat, gps_lon, pole_type, status
-        FROM dbo.pole
-        WHERE id IN ({})
+            SELECT id, code, gps_lat, gps_lon, pole_type, status
+            FROM dbo.pole
+            WHERE id IN ({})
         """.format(
             ",".join([f":m{i}" for i in range(len(ordered_poles))])
         )
@@ -107,9 +108,9 @@ def route_graph(route_id: str):
     mufas = []
     if ordered_poles:
         q = """
-        SELECT id, code, pole_id, mufa_type, gps_lat, gps_lon
-        FROM dbo.mufa
-        WHERE pole_id IN ({})
+            SELECT id, code, pole_id, mufa_type, gps_lat, gps_lon
+            FROM dbo.mufa
+            WHERE pole_id IN ({})
         """.format(
             ",".join([f":m{i}" for i in range(len(ordered_poles))])
         )
@@ -250,16 +251,18 @@ def route_graph(route_id: str):
     for s in segs:
         edges.append(
             {
-                "id": f"SPN:{s['cable_span_id']}",
+                "id": f"{s['cable_span_id']}",
                 "from": nid("POLE", s["from_pole_id"]),
                 "to": nid("POLE", s["to_pole_id"]),
                 "group": "span",
-                "title": f"{s['cable_id']} - {s['length_m'] or 0}m",
+                "title": f"{s['cable_id']} | {s["capacity_fibers"]} hilos | {s['length_m'] or 0}m / {s['length_span'] or 0}m",
                 "meta": {
                     "cable_id": s["cable_id"],
-                    "cable_span_id": s["cable_span_id"],
+                    "cable_seg_id": s["cable_span_id"],
                     "length_m": s["length_m"],
                     "seg_seq": s["seg_seq"],
+                    "capacity_span": s["length_span"],
+                    "capacity_fibers": s["capacity_fibers"],
                 },
             }
         )
@@ -353,14 +356,14 @@ def route_graph_with_access(route_id: str):
     # Extremos ODF de la ruta
     ends = fetch_all(
         """
-        SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
-                     o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
-                     o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
-        FROM dbo.odf_route r
-        JOIN dbo.odf o1 on o1.id = r.from_odf_id
-        JOIN dbo.odf o2 on o2.id = r.to_odf_id
-        WHERE r.id = :rid
-    """,
+            SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
+                        o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
+                        o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
+            FROM dbo.odf_route r
+            JOIN dbo.odf o1 on o1.id = r.from_odf_id
+            JOIN dbo.odf o2 on o2.id = r.to_odf_id
+            WHERE r.id = :rid
+        """,
         rid=route_id,
     )
     if not ends:
@@ -369,11 +372,11 @@ def route_graph_with_access(route_id: str):
 
     lks = fetch_all(
         """
-        SELECT link_id, router_id, router_name, router_nodo_id, router_port_id,
-                    odf_id, odf_name, odf_nodo_id, odf_port_id
-        FROM dbo.vw_router_odf_link
-        WHERE odf_id IN (:a, :b)
-    """,
+            SELECT link_id, router_id, router_name, router_nodo_id, router_port_id,
+                        odf_id, odf_name, odf_nodo_id, odf_port_id
+            FROM dbo.vw_router_odf_link
+            WHERE odf_id IN (:a, :b)
+        """,
         a=ends["from_odf_id"],
         b=ends["to_odf_id"],
     )
@@ -413,7 +416,6 @@ def route_graph_with_access(route_id: str):
                 },
             }
 
-        #
         e_id = f"PATCH:{lk['link_id']}"
         if e_id not in edges:
             edges[e_id] = {
@@ -495,9 +497,9 @@ def get_pole_details(pole_id: str):
 
         pole_rows = fetch_all(
             """
-            SELECT p.*
-            FROM dbo.pole p
-            WHERE p.id = :nid
+                SELECT p.*
+                FROM dbo.pole p
+                WHERE p.id = :nid
             """,
             nid=pole_id,
         )
@@ -586,3 +588,85 @@ def get_pole_details(pole_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"POLE_DETAILS_ERROR: {e}")
+
+
+@router.get("/mufas/{mufa_id}/splices")
+def get_mufa_splices(mufa_id: str):
+    # Mufa basica
+    mufa_id = "MUFA-SPLIT"
+    mufa = fetch_all(
+        """
+            SELECT id, code, pole_id, mufa_type, gps_lat, gps_lon
+            FROM dbo.mufa
+            WHERE id = :nid
+        """,
+        nid=mufa_id,
+    )
+    if not mufa:
+        raise HTTPException(status_code=404, detail=f"MUFA_NOT_FOUND: {mufa_id}")
+
+    # Empalme A <-> B (dilamento y cable de cada lado)
+    rows = fetch_all(
+        """
+        SELECT
+            s.id                AS splice_id,
+            s.mufa_id,
+
+            fa.id               AS a_fiber_filament_id,
+            fa.filament_no      AS a_filament_no,
+            fa.color_code       AS a_color_code,
+            ca.id               AS a_cable_id,
+            ca.code             AS a_cable_code,
+
+            fb.id               AS b_fiber_filament_id,
+            fb.filament_no      AS b_filament_no,
+            fb.color_code       AS b_color_code,
+            cb.id               AS b_cable_id,
+            cb.code             AS b_cable_code
+
+        FROM dbo.splice s
+        JOIN dbo.fiber_filament fa ON fa.id = s.a_fiber_filament_id
+        JOIN dbo.cable          ca ON ca.id = fa.cable_id
+        JOIN dbo.fiber_filament fb ON fb.id = s.b_fiber_filament_id
+        JOIN dbo.cable          cb ON cb.id = fb.cable_id
+        WHERE s.mufa_id = :nid
+        ORDER BY ca.code, cb.code, a_filament_no, b_filament_no
+        """,
+        nid=mufa_id,
+    )
+
+    # Agrupamos la data
+    splices = []
+    groups_map = {}
+
+    for r in rows:
+        item = {
+            "splice_id": r["splice_id"],
+            "a": {
+                "cable_id": r["a_cable_id"],
+                "cable_code": r["a_cable_code"],
+                "fiber_filament_id": r["a_fiber_filament_id"],
+                "filament_no": r["a_filament_no"],
+                "color_code": r["a_color_code"],
+            },
+            "b": {
+                "cable_id": r["b_cable_id"],
+                "cable_code": r["b_cable_code"],
+                "fiber_filament_id": r["b_fiber_filament_id"],
+                "filament_no": r["b_filament_no"],
+                "color_code": r["b_color_code"],
+            },
+        }
+        splices.append(item)
+
+        key = f'{item["a"]["cable_code"]}->{item["b"]["cable_code"]}'
+        groups_map.setdefault(key, 0)
+        groups_map[key] += 1
+
+    groups = [{"pair": k, "count": v} for k, v in groups_map.items()]
+    groups.sort(key=lambda x: (-x["count"], x["pair"]))
+    return {
+        "mufa": mufa,
+        "splices": splices,
+        "groups": groups,
+    }

@@ -392,7 +392,7 @@ export default function RouteDetailGraph({ route, onSelect }) {
           Centrar
         </button>
         <button className="btn" onClick={saveAllPositions} disabled={loading}>
-          Guardar posiciones (todo)
+          Guardar posiciones
         </button>
 
         {/* Quitar seleccion */}

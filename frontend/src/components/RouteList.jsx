@@ -74,7 +74,7 @@ export default function RouteList({ routes = [], onOpenRoute = () => {} }) {
                   >
                     {id}
                   </b>
-                  <CopyBtn text={id} title="Copiar Route ID" />
+                  {/*<CopyBtn text={id} title="Copiar Route ID" />*/}
                 </div>
                 <div
                   style={{
@@ -90,7 +90,6 @@ export default function RouteList({ routes = [], onOpenRoute = () => {} }) {
                   {from} → {to}
                 </div>
               </div>
-
               <button
                 className="btn"
                 onClick={() => canOpen && onOpenRoute(r)}
