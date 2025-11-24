@@ -1,85 +1,217 @@
 import { useEffect, useState } from "react";
 import api from "../api/client";
 
-export default function DetailsPanel({ selected }) {
-  const [state, setState] = useState({
-    loading: false,
-    error: "",
-    data: null,
-  });
+function ColorDot({ code }) {
+  if (!code) return null;
+  const size = 10;
+  return (
+    <span
+      title={code}
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        borderRadius: 99,
+        border: "1px solid #ccc",
+        background: code,
+        marginRight: 6,
+        verticalAlign: "middle",
+      }}
+    />
+  );
+}
 
-  const { loading, error, data } = state;
+function normalizePair(s) {
+  // Unifica "→" y "->", colapsa espacios, y compara en minúsculas
+  return String(s || "")
+    .replace(/\s*→\s*/g, "->")
+    .replace(/\s*-\s*>\s*/g, "->")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 
-  const selNode = selected?.node || null;
-  const selEdge = selected?.edge || null;
+function MufaSplices({ data }) {
+  const [pairFilter, setPairFilter] = useState("");
 
-  useEffect(() => {
-    // Si no hay nada seleccionado: no hago fetch
-    if (!selNode && !selEdge) {
-      setState({ loading: false, error: "", data: null });
-      return;
-    }
+  if (!data) return null;
+  console.log(data);
+  const rows = !data.splices
+    ? []
+    : pairFilter
+    ? data.splices.filter(
+        (s) =>
+          normalizePair(`${s.a.cable_code} -> ${s.b.cable_code}`) ===
+          normalizePair(pairFilter)
+      )
+    : data.splices;
 
-    // Por ahora implementamos POLE; deja stub para otros tipos
-    const kind = selNode?.kind || selEdge?.edge_kind || null;
-
-    async function load() {
-      setState((prev) => ({ ...prev, loading: true, error: "" }));
-      try {
-        let newData = null;
-
-        if (selNode) {
-          if (kind === "POLE") {
-            const r = await api.get(
-              `/topology/poles/${encodeURIComponent(selNode.id)}/details`
-            );
-            newData = { kind: "POLE", details: r.data };
-          } else {
-            newData = { kind, raw: selNode };
-          }
-        } else if (selEdge) {
-          newData = { kind: selEdge.edge_kind || "EDGE", raw: selEdge };
-        }
-        setState({ loading: false, error: "", data: newData });
-      } catch (e) {
-        const msg =
-          e?.response?.data?.detail || e?.message || "Error cargando detalles";
-        setState({ loading: false, error: msg, data: null });
-      }
-    }
-
-    load();
-  }, [selNode, selEdge]);
+  console.log(rows);
+  const m = data.mufa || {};
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <h3 style={{ margin: 0 }}>Detalles</h3>
+    <div
+      className="card"
+      style={{
+        maxHeight: "300px",
+        padding: "10px",
+        boxSizing: "border-box",
+        overflow: "auto",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>MUFA {m.code ?? m.id}</h3>
 
-      {!selNode && !selEdge && (
-        <div className="muted" style={{ marginTop: 6 }}>
-          Selecciona un nodo o un segmento.
-        </div>
-      )}
+      {/* Datos Base Mufa */}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        {m.mufa_type ? <span className="badge"> {m.mufa_type}</span> : null}
+        {m.gps_lat != null && m.gps_lon != null ? (
+          <span>
+            GPS: {m.gps_lat}, {m.gps_lon}{" "}
+            <button
+              className="btn"
+              style={{ marginLeft: 6, padding: "2px 8px", fontSize: 12 }}
+              onClick={() =>
+                navigator.clipboard.writeText(`${m.gps_lat},${m.gps_lon}`)
+              }
+              title="Copiar latitud y longitud"
+            >
+              Copiar GPS
+            </button>
+          </span>
+        ) : null}
+      </div>
 
-      {loading && <div style={{ marginTop: 6 }}>Cargando…</div>}
+      <details open>
+        <summary>
+          <b>Resumen por cambio de cables</b>{" "}
+          <span className="muted">(clic para expandir)</span>
+        </summary>
+        <ul className="compact" style={{ marginTop: 8 }}>
+          {(data.groups || []).map((g) => (
+            <li key={g.pair} style={{ cursor: "pointer" }}>
+              <span
+                className="badge"
+                onClick={() =>
+                  setPairFilter(g.pair === pairFilter ? "" : g.pair)
+                }
+                title="Filtrar tabla por este par"
+              >
+                {g.pair} | {g.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {pairFilter ? (
+          <div style={{ marginTop: 6 }}>
+            Filtro activo: <b>{pairFilter}</b>{" "}
+            <button
+              className="btn"
+              style={{ marginLeft: 6, padding: "2px 8px", fontSize: 12 }}
+              onClick={() => setPairFilter("")}
+            >
+              Quitar filtro
+            </button>
+          </div>
+        ) : null}
+      </details>
 
-      {!!error && (
-        <div style={{ marginTop: 6, color: "#b91c1c" }}>{String(error)}</div>
-      )}
-
-      {/* POLE */}
-      {data?.kind === "POLE" && data.details && (
-        <div style={{ marginTop: 8 }}>
-          <PoleDetails d={data.details} />
-        </div>
-      )}
-
-      {/* Otros tipos (aún sin endpoint dedicado) */}
-      {data && data.kind !== "POLE" && data.raw && (
-        <pre className="code-block" style={{ marginTop: 8 }}>
-          {JSON.stringify(data.raw, null, 2)}
-        </pre>
-      )}
+      {/* Tabla de empalmes */}
+      <div style={{ marginTop: 12, overflow: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 13,
+          }}
+        >
+          <thead>
+            <tr>
+              <th
+                style={{
+                  textAlign: "left",
+                  borderBottom: "1px solid #ddd",
+                  padding: 6,
+                }}
+              >
+                Cable A
+              </th>
+              <th
+                style={{
+                  textAlign: "left",
+                  borderBottom: "1px solid #ddd",
+                  padding: 6,
+                }}
+              >
+                Filamento A
+              </th>
+              <th
+                style={{
+                  borderBottom: "1px solid #ddd",
+                  padding: 6,
+                  width: 60,
+                }}
+              >
+                ||
+              </th>
+              <th
+                style={{
+                  textAlign: "left",
+                  borderBottom: "1px solid #ddd",
+                  padding: 6,
+                }}
+              >
+                Cable B
+              </th>
+              <th
+                style={{
+                  textAlign: "left",
+                  borderBottom: "1px solid #ddd",
+                  padding: 6,
+                }}
+              >
+                Filamento B
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="muted" style={{ padding: 8 }}>
+                  No hay empalmes por mostrar
+                </td>
+              </tr>
+            ) : (
+              rows.map((s) => (
+                <tr key={s.splice_id}>
+                  <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
+                    <span className="badge">{s.a.cable_code}</span>
+                  </td>
+                  <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
+                    <ColorDot code={s.a.color_code} />#{s.a.filament_no}
+                  </td>
+                  <td
+                    style={{
+                      padding: 6,
+                      borderBottom: "1px solid #eee",
+                      textAlign: "center",
+                      opacity: 0.6,
+                    }}
+                    title={s.splice_id}
+                  >
+                    emp.
+                  </td>
+                  <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
+                    <span className="badge">{s.b.cable_code}</span>
+                  </td>
+                  <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
+                    <ColorDot code={s.b.color_code} />#{s.b.filament_no}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -93,7 +225,15 @@ function PoleDetails({ d }) {
   const neighbors = d.neighbors || [];
 
   return (
-    <div className="stack">
+    <div
+      className="stack"
+      style={{
+        maxHeight: "200px",
+        padding: "10px",
+        boxSizing: "border-box",
+        overflow: "auto",
+      }}
+    >
       <div>
         <b>Pole</b>
         <ul className="compact">
@@ -211,6 +351,112 @@ function PoleDetails({ d }) {
             ))}
           </ul>
         </details>
+      )}
+    </div>
+  );
+}
+
+export default function DetailsPanel({ selected }) {
+  const [state, setState] = useState({
+    loading: false,
+    error: "",
+    data: null,
+  });
+
+  const { loading, error, data } = state;
+
+  const selNode = selected?.node || null;
+  const selEdge = selected?.edge || null;
+
+  useEffect(() => {
+    // Si no hay nada seleccionado: no hago fetch
+    if (!selNode && !selEdge) {
+      setState({ loading: false, error: "", data: null });
+      return;
+    }
+
+    // Por ahora implementamos POLE; deja stub para otros tipos
+    const kind = selNode?.kind || selEdge?.edge_kind || null;
+
+    async function load() {
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      try {
+        let newData = null;
+        console.log(selNode);
+        if (selNode) {
+          if (kind === "POLE") {
+            const r = await api.get(
+              `/topology/poles/${encodeURIComponent(selNode.id)}/details`
+            );
+            newData = { kind: "POLE", details: r.data };
+          } else if (kind === "MUFA") {
+            const r = await api.get(
+              `/topology/mufas/${encodeURIComponent(selNode.id)}/splices`
+            );
+            newData = { kind: "MUFA", details: r.data };
+          } else {
+            newData = { kind, raw: selNode };
+          }
+        } else if (selEdge) {
+          newData = { kind: selEdge.edge_kind || "EDGE", raw: selEdge };
+        }
+        setState({ loading: false, error: "", data: newData });
+      } catch (e) {
+        const msg =
+          e?.response?.data?.detail || e?.message || "Error cargando detalles";
+        setState({ loading: false, error: msg, data: null });
+      }
+    }
+
+    load();
+  }, [selNode, selEdge]);
+
+  if (!selected) {
+    return (
+      <div className="card">
+        <b>Detalles</b>
+        <div className="muted" style={{ marginTop: 6 }}>
+          Selecciona un elemento del grafo para ver detalles.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <h3 style={{ margin: 0 }}>Detalles</h3>
+
+      {!selNode && !selEdge && (
+        <div className="muted" style={{ marginTop: 6 }}>
+          Selecciona un nodo o un segmento.
+        </div>
+      )}
+
+      {loading && <div style={{ marginTop: 6 }}>Cargando…</div>}
+
+      {!!error && (
+        <div style={{ marginTop: 6, color: "#b91c1c" }}>{String(error)}</div>
+      )}
+
+      {/* POLE */}
+      {data?.kind === "POLE" && data.details && (
+        <div style={{ marginTop: 8 }}>
+          <PoleDetails d={data.details} />
+        </div>
+      )}
+
+      {/* MUFA */}
+      {data?.kind === "MUFA" && data.details && (
+        <div style={{ marginTop: 8 }}>
+          <MufaSplices data={data.details} />
+        </div>
+      )}
+
+      {/* Otros tipos (aún sin endpoint dedicado) */}
+      {data && data.kind !== "POLE" && data.raw && (
+        <pre className="code-block" style={{ marginTop: 8 }}>
+          {JSON.stringify(data.raw, null, 2)}
+        </pre>
       )}
     </div>
   );

@@ -56,7 +56,9 @@ BEGIN
       pf.code               AS from_pole_code,
       cs.to_pole_id,
       pt.code               AS to_pole_code,
-      cs.length_m
+      cs.length_m,
+      cs.length_span,
+      cs.capacity_fibers
     FROM dbo.odf_route_segment ors
     JOIN dbo.cable_span cs ON cs.id = ors.cable_span_id
     LEFT JOIN dbo.pole pf ON pf.id = cs.from_pole_id
