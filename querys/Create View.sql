@@ -8,9 +8,8 @@ BEGIN
 END
 
 -- BACKBONE (EDGES)
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.vw_backbone_edges') AND type = 'V')
-BEGIN 
-    exec('CREATE VIEW dbo.vw_backbone_edges AS
+
+CREATE OR ALTER VIEW dbo.vw_backbone_edges AS
     SELECT 
       r.id        AS route_id,
       o_from.nodo_id AS from_nodo_id,
@@ -18,8 +17,8 @@ BEGIN
       r.path_text
     FROM dbo.odf_route r
     JOIN dbo.odf o_from ON o_from.id = r.from_odf_id
-    JOIN dbo.odf o_to   ON o_to.id   = r.to_odf_id;')
-END
+    JOIN dbo.odf o_to   ON o_to.id   = r.to_odf_id;
+
 
 -- Router–ODF (para saber qué router/puerto “toca” cada ODF)
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.vw_router_odf_link') AND type = 'V')
@@ -43,9 +42,7 @@ BEGIN
 END
 
 -- Segmentos de ruta “expandida” (para ver los spans y postes)
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.vw_route_segments_expanded') AND type = 'V')
-BEGIN 
-    exec('CREATE VIEW dbo.vw_route_segments_expanded AS
+CREATE OR ALTER VIEW dbo.vw_route_segments_expanded AS
     SELECT 
       ors.odf_route_id,
       ors.seq               AS seg_seq,
@@ -57,13 +54,12 @@ BEGIN
       cs.to_pole_id,
       pt.code               AS to_pole_code,
       cs.length_m,
-      cs.length_span,
-      cs.capacity_fibers
+      cs.length_span        ,
+      cs.capacity_fibers    
     FROM dbo.odf_route_segment ors
     JOIN dbo.cable_span cs ON cs.id = ors.cable_span_id
     LEFT JOIN dbo.pole pf ON pf.id = cs.from_pole_id
-    LEFT JOIN dbo.pole pt ON pt.id = cs.to_pole_id;')
-END
+    LEFT JOIN dbo.pole pt ON pt.id = cs.to_pole_id;
 
 -- Rutas Logicas con informacion del resumen Fisico
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.vw_route_physical_summary') AND type = 'V')
@@ -318,3 +314,7 @@ SELECT DISTINCT
        NULL                                   AS path_text
 FROM dbo.mufa m
 JOIN dbo.pole p ON p.id = m.pole_id;
+
+
+
+

@@ -593,7 +593,6 @@ def get_pole_details(pole_id: str):
 @router.get("/mufas/{mufa_id}/splices")
 def get_mufa_splices(mufa_id: str):
     # Mufa basica
-    mufa_id = "MUFA-SPLIT"
     mufa = fetch_all(
         """
             SELECT id, code, pole_id, mufa_type, gps_lat, gps_lon
@@ -665,6 +664,9 @@ def get_mufa_splices(mufa_id: str):
 
     groups = [{"pair": k, "count": v} for k, v in groups_map.items()]
     groups.sort(key=lambda x: (-x["count"], x["pair"]))
+    # print(mufa)
+    # print(splices)
+    # print(groups)
     return {
         "mufa": mufa,
         "splices": splices,
