@@ -194,8 +194,9 @@ export default function RouteDetailGraph({ route, onSelect }) {
           setSelectedNodeId(null);
           payload.pinned = { type: "edge", id: edgeId };
         }
-        //setSelectMode(false);
+        setSelectMode(false);
       }
+      console.log(payload.pinned);
       onSelect?.(payload);
     };
     net.on("click", handlerClick);

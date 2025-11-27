@@ -39,22 +39,46 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
   }, []);
 
   const data = useMemo(() => {
-    const nodes = (graph.nodes || []).map((n) => ({
-      id: n.id,
-      label: n.label ?? n.id,
-      x: n.x,
-      y: n.y,
-      fixed: n.fixed ?? { x: true, y: true },
-      group: "nodo",
-      kind: "NODO",
-      color: { background: "#FFEDD5", border: "#FF6A00" },
-      font: { color: "#111" },
-      shape: "box",
-      margin: 8,
-      meta: n.meta || null,
-      layer: n.layer ?? null,
-      status: n.status ?? null,
-    }));
+    const nodes = (graph.nodes || []).map((n) => {
+      const kind = n.kind || "NODO";
+      const group = n.group || "nodo";
+
+      if (kind === "MUFA_SPLIT" || group === "mufa_split") {
+        return {
+          id: n.id,
+          label: n.label ?? "",
+          x: n.x,
+          y: n.y,
+          fixed: n.fixed ?? { x: true, y: true },
+          group: "mufa_split",
+          kind,
+          color: { background: "#68e0f5", border: "#111" },
+          font: { color: "#111", size: 8 },
+          shape: "triangle",
+          size: 5,
+          meta: n.meta || null,
+          layer: n.layer ?? null,
+          status: n.status ?? null,
+        };
+      }
+      // Nodo Físico
+      return {
+        id: n.id,
+        label: n.label ?? n.id,
+        x: n.x,
+        y: n.y,
+        fixed: n.fixed ?? { x: true, y: true },
+        group: "nodo",
+        kind: "NODO",
+        color: { background: "#FFEDD5", border: "#FF6A00" },
+        font: { color: "#111" },
+        shape: "box",
+        margin: 10,
+        meta: n.meta || null,
+        layer: n.layer ?? null,
+        status: n.status ?? null,
+      };
+    });
 
     const edges = (graph.edges || []).map((e) => ({
       id: e.id, // route_id
@@ -127,7 +151,21 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
       // DOBLE CLICK EN ENLACE -> abrir detalle de ruta
       networkRef.current.on("doubleClick", (params) => {
         const edgeId = params?.edges?.[0];
-        if (edgeId && typeof onOpenRoute === "function") onOpenRoute(edgeId);
+        if (!edgeId || typeof onOpenRoute !== "function") return;
+
+        const dsEdges = networkRef.current.body.data.edges;
+        const e = dsEdges.get(edgeId);
+
+        // Si la arista tiene meta.route_id, usarlo (MUFA_TO_NODO),
+        // si no, usar el id de la arista (para enlaces directos NODO_LINK)
+        const routeId =
+          e?.meta?.route_id && typeof e.meta.route_id === "string"
+            ? e.meta.route_id
+            : e.id;
+
+        if (routeId) {
+          onOpenRoute(routeId);
+        }
       });
     } else {
       networkRef.current.setData(data);

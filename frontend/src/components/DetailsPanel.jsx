@@ -35,7 +35,6 @@ function MufaSplices({ data }) {
   const [pairFilter, setPairFilter] = useState("");
 
   if (!data) return null;
-  console.log(data);
   const rows = !data.splices
     ? []
     : pairFilter
@@ -46,7 +45,6 @@ function MufaSplices({ data }) {
       )
     : data.splices;
 
-  console.log(rows);
   const m = data.mufa || {};
 
   return (
@@ -142,7 +140,7 @@ function MufaSplices({ data }) {
                   padding: 6,
                 }}
               >
-                Filamento A
+                Film A
               </th>
               <th
                 style={{
@@ -169,7 +167,7 @@ function MufaSplices({ data }) {
                   padding: 6,
                 }}
               >
-                Filamento B
+                Film B
               </th>
             </tr>
           </thead>
@@ -198,7 +196,7 @@ function MufaSplices({ data }) {
                     }}
                     title={s.splice_id}
                   >
-                    emp.
+                    →
                   </td>
                   <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
                     <span className="badge">{s.b.cable_code}</span>
@@ -382,7 +380,6 @@ export default function DetailsPanel({ selected }) {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
       try {
         let newData = null;
-        console.log(selNode);
         if (selNode) {
           if (kind === "POLE") {
             const r = await api.get(
@@ -393,6 +390,7 @@ export default function DetailsPanel({ selected }) {
             const r = await api.get(
               `/topology/mufas/${encodeURIComponent(selNode.id)}/splices`
             );
+            console.log(selNode.id);
             newData = { kind: "MUFA", details: r.data };
           } else {
             newData = { kind, raw: selNode };
