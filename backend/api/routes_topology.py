@@ -50,147 +50,247 @@ def list_routes():
 # Grafo detallado por ruta (ODF, poste, mufas, segmentos/spans)
 @router.get("/routes/{route_id}/graph")
 def route_graph(route_id: str):
-    # segmentos de la ruta ordenados
-    segs = fetch_all(
-        """
-            SELECT odf_route_id, seg_seq, cable_span_id, cable_id, cable_seq,
-            from_pole_id, from_pole_code, to_pole_id, to_pole_code, length_m,length_span,
-            capacity_fibers
-            FROM dbo.vw_route_segments_expanded
-            WHERE odf_route_id = :rid
-            ORDER BY seg_seq
-        """,
-        rid=route_id,
-    )
-    if not segs:
-        raise HTTPException(404, f"ROUTE_NOT_FOUND_OR_EMPTY: {route_id}")
+    """
+    Grafo físico de la ruta, extendido para incluir ramales que COMPARTEN spans
+    con la ruta base y salen del mismo nodo origen.
 
-    # extremos ODF (from/to)
+    Ejemplo:
+        NODO A -> ... -> MUFA X -> ... -> NODO B
+        NODO A -> ... -> MUFA X -> ... -> NODO C
+
+    Si la ruta base es A-B, el grafo incluirá también el ramal hacia C.
+    Y si la base es A-C, incluirá el ramal hacia B.
+    """
+
+    # 1) Datos de la ruta base (extremos)
     ends_rows = fetch_all(
         """
-            SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
-                o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
-                o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
-            FROM dbo.odf_route r
-            JOIN dbo.odf o1 on o1.id = r.from_odf_id
-            JOIN dbo.odf o2 on o2.id = r.to_odf_id
-            WHERE r.id = :rid
+        SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
+               o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
+               o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
+        FROM dbo.odf_route r
+        JOIN dbo.odf o1 on o1.id = r.from_odf_id
+        JOIN dbo.odf o2 on o2.id = r.to_odf_id
+        WHERE r.id = :rid
         """,
         rid=route_id,
     )
     if not ends_rows:
         raise HTTPException(status_code=404, detail=f"ROUTE_NOT_FOUND: {route_id}")
-    ends = ends_rows[0]
+    base_end = ends_rows[0]
+    base_from_nodo_id = base_end["from_nodo_id"]
 
-    # ser de postes de la ruta
+    # 2) Rutas "hermanas": mismas spans físicos + mismo nodo origen
+    related_rows = fetch_all(
+        """
+        WITH base_spans AS (
+            SELECT DISTINCT ors.cable_span_id
+            FROM dbo.odf_route_segment ors
+            WHERE ors.odf_route_id = :rid
+        )
+        SELECT DISTINCT r2.id AS route_id
+        FROM base_spans bs
+        JOIN dbo.odf_route_segment ors2
+            ON ors2.cable_span_id = bs.cable_span_id
+        JOIN dbo.odf_route r2
+            ON r2.id = ors2.odf_route_id
+        JOIN dbo.odf o_from2
+            ON o_from2.id = r2.from_odf_id
+        WHERE r2.id <> :rid
+          AND o_from2.nodo_id = :from_nodo_id
+        """,
+        rid=route_id,
+        from_nodo_id=base_from_nodo_id,
+    )
+
+    related_ids = [r["route_id"] for r in related_rows] if related_rows else []
+    all_route_ids: List[str] = [route_id] + related_ids
+
+    # 3) Spans físicos de TODAS las rutas involucradas
+    #    (base + hermanas)
+    placeholders = ",".join(f":r{i}" for i in range(len(all_route_ids)))
+    params_routes = {f"r{i}": rid for i, rid in enumerate(all_route_ids)}
+
+    segs = fetch_all(
+        f"""
+        SELECT odf_route_id, seg_seq, cable_span_id, cable_id, cable_seq,
+               from_pole_id, from_pole_code, to_pole_id, to_pole_code,
+               length_m, length_span, capacity_fibers
+        FROM dbo.vw_route_segments_expanded
+        WHERE odf_route_id IN ({placeholders})
+        ORDER BY odf_route_id, seg_seq
+        """,
+        **params_routes,
+    )
+    if not segs:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ROUTE_NOT_FOUND_OR_EMPTY_GROUP: {route_id}",
+        )
+
+    # 4) Extremos ODF de TODAS las rutas (para poder dibujar B, C, etc.)
+    ends_all_rows = fetch_all(
+        f"""
+        SELECT r.id as route_id, r.from_odf_id, r.to_odf_id,
+               o1.name as from_odf_name, o1.code as from_odf_code, o1.nodo_id as from_nodo_id,
+               o2.name as to_odf_name, o2.code as to_odf_code, o2.nodo_id as to_nodo_id
+        FROM dbo.odf_route r
+        JOIN dbo.odf o1 on o1.id = r.from_odf_id
+        JOIN dbo.odf o2 on o2.id = r.to_odf_id
+        WHERE r.id IN ({placeholders})
+        """,
+        **params_routes,
+    )
+    route_end_map = {r["route_id"]: r for r in ends_all_rows}
+
+    # 5) Postes ordenados y último poste por ruta (para conectar cada ODF destino)
     ordered_poles: List[str] = []
-    for s in segs:
-        if s["from_pole_id"] not in ordered_poles:
-            ordered_poles.append(s["from_pole_id"])
-        if s["to_pole_id"] not in ordered_poles:
-            ordered_poles.append(s["to_pole_id"])
+    last_pole_by_route: Dict[str, str] = {}
 
-    # Datos de los postes
+    for s in segs:
+        fp = s["from_pole_id"]
+        tp = s["to_pole_id"]
+        if fp not in ordered_poles:
+            ordered_poles.append(fp)
+        if tp not in ordered_poles:
+            ordered_poles.append(tp)
+        # último poste donde termina la ruta
+        last_pole_by_route[s["odf_route_id"]] = tp
+
+    # 6) Datos de postes
     poles = []
     if ordered_poles:
-        q = """
+        q_poles = """
             SELECT id, code, gps_lat, gps_lon, pole_type, status
             FROM dbo.pole
             WHERE id IN ({})
         """.format(
-            ",".join([f":m{i}" for i in range(len(ordered_poles))])
+            ",".join(f":p{i}" for i in range(len(ordered_poles)))
         )
-        params = {f"m{i}": pid for i, pid in enumerate(ordered_poles)}
-        poles = fetch_all(q, **params)
+        params_poles = {f"p{i}": pid for i, pid in enumerate(ordered_poles)}
+        poles = fetch_all(q_poles, **params_poles)
     pole_map = {p["id"]: p for p in poles}
 
-    # Mufas por poste
+    # 7) Mufas por poste
     mufas = []
     if ordered_poles:
-        q = """
+        q_mufas = """
             SELECT id, code, pole_id, mufa_type, gps_lat, gps_lon
             FROM dbo.mufa
             WHERE pole_id IN ({})
         """.format(
-            ",".join([f":m{i}" for i in range(len(ordered_poles))])
+            ",".join(f":m{i}" for i in range(len(ordered_poles)))
         )
-        params = {f"m{i}": pid for i, pid in enumerate(ordered_poles)}
-        mufas = fetch_all(q, **params)
+        params_mufas = {f"m{i}": pid for i, pid in enumerate(ordered_poles)}
+        mufas = fetch_all(q_mufas, **params_mufas)
 
-    # construccion de nodos y aristas para vis-network
+    # 8) Construcción de nodos y aristas
     nodes = []
     edges = []
 
-    # IDs namespaced para no chocar ocn otros Grafos:
     def nid(kind: str, raw_id: str) -> str:
+        # para este grafo usamos el id crudo (consistente con el resto de la app)
         return f"{raw_id}"
 
-    # posiciones guardadas (si existen)
+    # 9) Posiciones guardadas
     candidate_ids: List[str] = []
-    # ODF extremos
-    from_odf_node_id = nid("ODF", ends["from_odf_id"])
-    to_odf_node_id = nid("ODF", ends["to_odf_id"])
-    candidate_ids += [from_odf_node_id, to_odf_node_id]
 
-    # Postes
-    candidate_ids += [nid("POLE", p) for p in ordered_poles]
+    base_from_odf_id = base_end["from_odf_id"]
+    from_odf_node_id = nid("ODF", base_from_odf_id)
 
-    # Mufas
-    candidate_ids += [nid("MUFA", m["id"]) for m in mufas]
+    # Todos los ODF destino (B, C, ...) de las rutas involucradas
+    to_odf_ids = set()
+    for r_id, info in route_end_map.items():
+        to_odf_ids.add(info["to_odf_id"])
+
+    to_odf_node_ids = [nid("ODF", oid) for oid in to_odf_ids]
+
+    candidate_ids.append(from_odf_node_id)
+    candidate_ids.extend(to_odf_node_ids)
+    candidate_ids.extend(nid("POLE", p) for p in ordered_poles)
+    candidate_ids.extend(nid("MUFA", m["id"]) for m in mufas)
 
     pos_map = get_position_map(candidate_ids)
 
-    # Dallback lineal para postes (si no hay posiciones): x = i*220, y=0
+    # 10) Layout lineal de postes por defecto
     SPACING_X = 220.0
-    for (
-        i,
-        pid,
-    ) in enumerate(ordered_poles):
+    for i, pid in enumerate(ordered_poles):
         k = nid("POLE", pid)
         if k not in pos_map:
             pos_map[k] = (i * SPACING_X, 0.0)
 
-    # Se coloca ODFs a los lados: antes del primer poste y despues del ultimo
+    # 11) Posición de ODF origen y ODF destino
     if ordered_poles:
         x0 = pos_map[nid("POLE", ordered_poles[0])][0]
         xN = pos_map[nid("POLE", ordered_poles[-1])][0]
     else:
         x0, xN = -180.0, 180.0
+
     if from_odf_node_id not in pos_map:
         pos_map[from_odf_node_id] = (x0 - 180.0, 0.0)
-    if to_odf_node_id not in pos_map:
-        pos_map[to_odf_node_id] = (xN + 180.0, 0.0)
 
-    # Posicion para MUFAS: mismo X del poste, Y arriba (-120) si no hay guardado
-    MUFA_DY = -120.0
+    # default X para cada ODF destino, basado en el último poste de su ruta
+    default_to_pos: Dict[str, tuple[float, float]] = {}
+    for r_id, info in route_end_map.items():
+        to_oid = info["to_odf_id"]
+        last_pole = last_pole_by_route.get(r_id)
+        if not last_pole:
+            continue
+        pole_k = nid("POLE", last_pole)
+        px, py = pos_map.get(pole_k, (xN, 0.0))
+        default_to_pos[to_oid] = (px + 180.0, py)
 
-    # Creamos nodos ODF extremos
+    for to_oid in to_odf_ids:
+        k = nid("ODF", to_oid)
+        if k not in pos_map:
+            px, py = default_to_pos.get(to_oid, (xN + 180.0, 0.0))
+            pos_map[k] = (px, py)
+
+    # 12) Nodos ODF
+    # ODF origen (único)
     nodes.append(
         {
             "id": from_odf_node_id,
-            "label": ends["from_odf_code"]
-            or ends["from_odf_name"]
-            or ends["from_odf_id"],
+            "label": base_end["from_odf_code"]
+            or base_end["from_odf_name"]
+            or base_from_odf_id,
             "group": "odf",
             "x": float(pos_map[from_odf_node_id][0]),
             "y": float(pos_map[from_odf_node_id][1]),
             "fixed": {"x": True, "y": True},
-            "meta": {"nodo_id": ends["from_nodo_id"], "odf_id": ends["from_odf_id"]},
-        }
-    )
-    nodes.append(
-        {
-            "id": to_odf_node_id,
-            "label": ends["to_odf_code"] or ends["to_odf_name"] or ends["to_odf_id"],
-            "group": "odf",
-            "x": float(pos_map[to_odf_node_id][0]),
-            "y": float(pos_map[to_odf_node_id][1]),
-            "fixed": {"x": True, "y": True},
-            "meta": {"nodo_id": ends["to_nodo_id"], "odf_id": ends["to_odf_id"]},
+            "meta": {
+                "nodo_id": base_end["from_nodo_id"],
+                "odf_id": base_from_odf_id,
+            },
         }
     )
 
-    # Nodos de postes
+    # ODF destino (pueden ser varios: B, C, ...)
+    # Tomamos la info de cualquier ruta que tenga ese to_odf_id
+    to_odf_info: Dict[str, dict] = {}
+    for r_id, info in route_end_map.items():
+        to_oid = info["to_odf_id"]
+        if to_oid not in to_odf_info:
+            to_odf_info[to_oid] = info
+
+    for to_oid, info in to_odf_info.items():
+        k = nid("ODF", to_oid)
+        nodes.append(
+            {
+                "id": k,
+                "label": info["to_odf_code"] or info["to_odf_name"] or to_oid,
+                "group": "odf",
+                "x": float(pos_map[k][0]),
+                "y": float(pos_map[k][1]),
+                "fixed": {"x": True, "y": True},
+                "meta": {
+                    "nodo_id": info["to_nodo_id"],
+                    "odf_id": to_oid,
+                },
+            }
+        )
+
+    # 13) Nodos de postes
     for pid in ordered_poles:
         p = pole_map.get(pid, {"code": pid})
         k = nid("POLE", pid)
@@ -212,7 +312,9 @@ def route_graph(route_id: str):
             }
         )
 
-    # Nodos de MUFAS (sobre postes)
+    # 14) Nodos de MUFAS (sobre postes)
+    MUFA_DY = -120.0
+
     for m in mufas:
         k = nid("MUFA", m["id"])
         if k not in pos_map:
@@ -236,7 +338,7 @@ def route_graph(route_id: str):
             }
         )
 
-        # Arista pole mufa (decorativa)
+        # Arista poste-mufa (decorativa)
         edges.append(
             {
                 "id": f"PM:{m['pole_id']}:{m['id']}",
@@ -247,7 +349,7 @@ def route_graph(route_id: str):
             }
         )
 
-    # Aristas de spans (pole to pole)
+    # 15) Aristas de spans (poste a poste), para todas las rutas
     for s in segs:
         edges.append(
             {
@@ -255,7 +357,10 @@ def route_graph(route_id: str):
                 "from": nid("POLE", s["from_pole_id"]),
                 "to": nid("POLE", s["to_pole_id"]),
                 "group": "span",
-                "title": f"{s['cable_id']} | {s["capacity_fibers"]} hilos | {s['length_m'] or 0}m / {s['length_span'] or 0}m",
+                "title": (
+                    f"{s['cable_id']} | {s['capacity_fibers']} hilos | "
+                    f"{s['length_m'] or 0}m / {s['length_span'] or 0}m"
+                ),
                 "meta": {
                     "cable_id": s["cable_id"],
                     "cable_seg_id": s["cable_span_id"],
@@ -263,11 +368,12 @@ def route_graph(route_id: str):
                     "seg_seq": s["seg_seq"],
                     "capacity_span": s["length_span"],
                     "capacity_fibers": s["capacity_fibers"],
+                    "odf_route_id": s["odf_route_id"],
                 },
             }
         )
 
-    # Aristas "virtuales" ODF a postes extremos para cerrar el dibujo
+    # 16) Arista "virtual" ODF origen -> primer poste
     if ordered_poles:
         edges.append(
             {
@@ -278,13 +384,20 @@ def route_graph(route_id: str):
                 "title": "Entrada a planta externa",
             }
         )
+
+    # 17) Aristas "virtuales" último poste de cada ruta -> su ODF destino
+    for r_id, info in route_end_map.items():
+        last_pole = last_pole_by_route.get(r_id)
+        if not last_pole:
+            continue
+        to_oid = info["to_odf_id"]
         edges.append(
             {
-                "id": f"ODF_OUT:{route_id}",
-                "from": nid("POLE", ordered_poles[-1]),
-                "to": to_odf_node_id,
+                "id": f"ODF_OUT:{r_id}",
+                "from": nid("POLE", last_pole),
+                "to": nid("ODF", to_oid),
                 "group": "odf_link",
-                "title": "Salida a ODF destino",
+                "title": f"Salida a ODF destino (ruta {r_id})",
             }
         )
 
