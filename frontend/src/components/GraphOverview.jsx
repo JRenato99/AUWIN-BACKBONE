@@ -24,11 +24,22 @@ function buildOptions() {
 export default function GraphOverview({ onSelect, onOpenRoute }) {
   const containerRef = useRef(null);
   const networkRef = useRef(null);
+
+  // refs para tener SIEMPRE la última versión de los callbacks
+  const selectCallbackRef = useRef(onSelect);
+  const openRouteCallbackRef = useRef(onOpenRoute);
+
   const [loading, setLoading] = useState(false);
   const [graph, setGraph] = useState({ nodes: [], edges: [], meta: {} });
   const [locked, setLocked] = useState(false);
 
-  // Cargar grafo: SOLO nodos físicos + enlaces (route_id como id de arista)
+  // Mantener callbacks actualizados sin re-registrar eventos en vis-network
+  useEffect(() => {
+    selectCallbackRef.current = onSelect;
+    openRouteCallbackRef.current = onOpenRoute;
+  }, [onSelect, onOpenRoute]);
+
+  // Cargar grafo overview (solo una vez)
   useEffect(() => {
     setLoading(true);
     api
@@ -38,11 +49,13 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Adaptar data del backend al formato de vis-network
   const data = useMemo(() => {
     const nodes = (graph.nodes || []).map((n) => {
       const kind = n.kind || "NODO";
       const group = n.group || "nodo";
 
+      // Nodo MUFA_SPLIT (círculo)
       if (kind === "MUFA_SPLIT" || group === "mufa_split") {
         return {
           id: n.id,
@@ -52,16 +65,17 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
           fixed: n.fixed ?? { x: true, y: true },
           group: "mufa_split",
           kind,
-          color: { background: "#68e0f5", border: "#111" },
-          font: { color: "#111", size: 8 },
-          shape: "triangle",
-          size: 5,
+          color: { background: "#0f172a", border: "#38bdf8" },
+          font: { color: "#e5e7eb", size: 8 },
+          shape: "circle",
+          size: 8,
           meta: n.meta || null,
           layer: n.layer ?? null,
           status: n.status ?? null,
         };
       }
-      // Nodo Físico
+
+      // Nodo físico (NODO)
       return {
         id: n.id,
         label: n.label ?? n.id,
@@ -73,104 +87,155 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
         color: { background: "#FFEDD5", border: "#FF6A00" },
         font: { color: "#111" },
         shape: "box",
-        margin: 10,
+        margin: 8,
         meta: n.meta || null,
         layer: n.layer ?? null,
         status: n.status ?? null,
       };
     });
 
-    const edges = (graph.edges || []).map((e) => ({
-      id: e.id, // route_id
-      from: e.from,
-      to: e.to,
-      title: e.title ?? "",
-      color: "#94a3b8",
-      dashes: true,
-      width: 2,
-      group: "NODO_LINK",
-      meta: e.meta || null,
-    }));
+    const edges = (graph.edges || []).map((e) => {
+      const kind = e.edge_kind || e.group || "NODO_LINK";
+      let color = "#94a3b8";
+      let dashes = true;
+
+      if (kind === "NODO_TO_MUFA" || kind === "MUFA_TO_NODO") {
+        color = "#38bdf8";
+        dashes = false;
+      }
+
+      return {
+        id: e.id, // id interno vis-network (NO tiene por qué ser el route_id)
+        from: e.from,
+        to: e.to,
+        title: e.title ?? "",
+        color,
+        dashes,
+        width: 2,
+        group: kind,
+        meta: e.meta || null, // aquí esperamos meta.route_id en edges que abren RouteDetail
+      };
+    });
+
     return { nodes, edges };
   }, [graph]);
 
+  // Crear la instancia de Network UNA sola vez y registrar eventos
   useEffect(() => {
     if (!containerRef.current) return;
+    if (networkRef.current) return; // ya fue creado
+
     const options = buildOptions();
+    networkRef.current = new Network(containerRef.current, data, options);
 
-    if (!networkRef.current) {
-      networkRef.current = new Network(containerRef.current, data, options);
+    // Fit inicial solo una vez
+    networkRef.current.once("afterDrawing", () => {
+      try {
+        networkRef.current.fit({ animation: { duration: 400 } });
+      } catch (e) {
+        console.error(e);
+      }
+    });
 
-      networkRef.current.once("afterDrawing", () => {
-        try {
-          networkRef.current.fit({ animation: { duration: 400 } });
-        } catch (e) {
-          console.error(e);
-        }
-      });
+    // CLICK -> manda info a DetailsPanel (no resetea vista)
+    networkRef.current.on("click", (params) => {
+      const dsNodes = networkRef.current.body.data.nodes;
+      const dsEdges = networkRef.current.body.data.edges;
+      const onSelectCb = selectCallbackRef.current;
 
-      // CLICK -> manda info a DetailsPanel
-      networkRef.current.on("click", (params) => {
-        const dsNodes = networkRef.current.body.data.nodes;
-        const dsEdges = networkRef.current.body.data.edges;
+      if (!onSelectCb) return;
 
-        if (params?.nodes?.length) {
-          const n = dsNodes.get(params.nodes[0]);
-          onSelect?.({
-            node: {
-              id: n.id,
-              kind: n.kind || "NODO",
-              label: n.label,
-              layer: n.layer ?? null,
-              status: n.status ?? null,
-              group: n.group,
-              meta: n.meta || null,
-            },
-          });
-          return;
-        }
+      if (params?.nodes?.length) {
+        const n = dsNodes.get(params.nodes[0]);
+        onSelectCb({
+          node: {
+            id: n.id,
+            kind: n.kind || "NODO",
+            label: n.label,
+            layer: n.layer ?? null,
+            status: n.status ?? null,
+            group: n.group,
+            meta: n.meta || null,
+          },
+        });
+        return;
+      }
 
-        if (params?.edges?.length) {
-          const e = dsEdges.get(params.edges[0]);
-          onSelect?.({
-            edge: {
-              id: e.id,
-              edge_kind: e.group || "NODO_LINK",
-              from: e.from,
-              to: e.to,
-              title: e.title ?? "",
-              meta: e.meta || null,
-            },
-          });
-          return;
-        }
+      if (params?.edges?.length) {
+        const e = dsEdges.get(params.edges[0]);
+        onSelectCb({
+          edge: {
+            id: e.id,
+            edge_kind: e.group || "NODO_LINK",
+            from: e.from,
+            to: e.to,
+            title: e.title ?? "",
+            meta: e.meta || null,
+          },
+        });
+        return;
+      }
 
-        onSelect?.(null);
-      });
+      onSelectCb(null);
+    });
 
-      // DOBLE CLICK EN ENLACE -> abrir detalle de ruta
-      networkRef.current.on("doubleClick", (params) => {
-        const edgeId = params?.edges?.[0];
-        if (!edgeId || typeof onOpenRoute !== "function") return;
+    // DOBLE CLICK:
+    // - Si es sobre nodo (incluye mufa): NO hacer nada.
+    // - Si es sobre edge sin meta.route_id: NO hacer nada.
+    // - Si es sobre edge con meta.route_id: abrir RouteDetail.
+    networkRef.current.on("doubleClick", (params) => {
+      const onOpenRouteCb = openRouteCallbackRef.current;
+      if (!onOpenRouteCb) return;
 
-        const dsEdges = networkRef.current.body.data.edges;
-        const e = dsEdges.get(edgeId);
+      // Bloquear doble clic sobre nodos (NODO físico o MUFA_SPLIT)
+      if (params?.nodes && params.nodes.length > 0) {
+        return;
+      }
 
-        // Si la arista tiene meta.route_id, usarlo (MUFA_TO_NODO),
-        // si no, usar el id de la arista (para enlaces directos NODO_LINK)
-        const routeId =
-          e?.meta?.route_id && typeof e.meta.route_id === "string"
-            ? e.meta.route_id
-            : e.id;
+      const edgeId = params?.edges?.[0];
+      if (!edgeId) return;
 
-        if (routeId) {
-          onOpenRoute(routeId);
-        }
-      });
-    } else {
-      networkRef.current.setData(data);
-    }
-  }, [data, onSelect, onOpenRoute]);
+      const dsEdges = networkRef.current.body.data.edges;
+      const e = dsEdges.get(edgeId);
+      if (!e || !e.meta || !e.meta.route_id) {
+        // Edge sin route_id (por ejemplo NODO->MUFA) => ignorar
+        return;
+      }
+
+      const routeId = e.meta.route_id;
+      if (typeof routeId === "string" && routeId.length > 0) {
+        onOpenRouteCb(routeId);
+      }
+    });
+
+    // Limpieza al desmontar
+    return () => {
+      if (networkRef.current) {
+        networkRef.current.destroy();
+        networkRef.current = null;
+      }
+    };
+  }, [data]); // solo necesita data inicial para crear el grafo
+
+  // Actualizar data del grafo SIN perder zoom/posición
+  useEffect(() => {
+    const net = networkRef.current;
+    if (!net) return;
+
+    // Guardamos posición actual de la vista
+    const currentPosition = net.getViewPosition();
+    const currentScale = net.getScale();
+
+    // Actualizamos nodos y edges
+    net.setData(data);
+
+    // Restauramos vista (sin animación) para que no "salte" de sitio
+    net.moveTo({
+      position: currentPosition,
+      scale: currentScale,
+      animation: false,
+    });
+  }, [data]);
 
   // Drag temporal: desbloquear en dragStart y re-fijar + guardar en dragEnd
   useEffect(() => {
