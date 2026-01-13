@@ -35,13 +35,16 @@ const SidebarBlock = ({
   <>
     {showHeader && (
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Rutas Lógicas</h3>
-        <p style={{ opacity: 0.7, marginTop: 4 }}>
+        <div className="card-header">
+          <h3 className="card-title">Rutas Lógicas</h3>
+          <span className="badge">{loadingRoutes ? "Cargando..." : "Activas"}</span>
+        </div>
+        <p className="card-subtitle">
           Selecciona una para ver su planta externa.
         </p>
-        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-          {loadingRoutes ? "Cargando…" : `Total: ${routes.length}`}
-        </div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 6}}>
+          {loadingRoutes ? "Actualizando rutas..." : `Total: ${routes.length}`}
+        </div>        
       </div>
     )}
 
@@ -105,13 +108,14 @@ export default function App() {
   };
 
   return (
-    <div
-      className="app"
-      style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
-    >
+    //<div
+    //  className="app"
+    //  style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+    //>
+    <div className="app app-shell">
       <Toolbar view={view} onChangeView={onChangeView} onBack={onBack} />
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="app-content">
         <Suspense fallback={<div className="card">Cargando…</div>}>
           <Routes>
             <Route path="/" element={<Navigate to="/overview" replace />} />
@@ -120,17 +124,8 @@ export default function App() {
             <Route
               path="/overview"
               element={
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "340px 1fr",
-                    gap: 12,
-                    padding: 12,
-                    height: "100%",
-                    minHeight: 0,
-                  }}
-                >
-                  <div className="sidebar" style={{ overflowY: "auto" }}>
+                <div className="app-grid">
+                  <div className="app-sidebar">
                     <SidebarBlock
                       showHeader={true}
                       loadingRoutes={loadingRoutes}
@@ -141,13 +136,7 @@ export default function App() {
                   </div>
 
                   <div
-                    className="main"
-                    style={{
-                      position: "relative",
-                      minHeight: 0,
-                      height: "100%",
-                    }}
-                  >
+                    className="app-main">
                     <GraphOverview
                       onSelect={(s) => setSelected(s)}
                       onOpenRoute={(routeId) => {
@@ -165,17 +154,8 @@ export default function App() {
             <Route
               path="/routes/:routeId"
               element={
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "340px 1fr",
-                    gap: 12,
-                    padding: 12,
-                    height: "100%",
-                    minHeight: 0,
-                  }}
-                >
-                  <div className="sidebar" style={{ overflowY: "auto" }}>
+                <div className="app-grid">
+                  <div className="app-sidebar">
                     <SidebarBlock
                       showHeader={false}
                       loadingRoutes={loadingRoutes}
@@ -185,14 +165,7 @@ export default function App() {
                     />
                   </div>
 
-                  <div
-                    className="main"
-                    style={{
-                      position: "relative",
-                      minHeight: 0,
-                      height: "100%",
-                    }}
-                  >
+                  <div className="app-main">
                     <RouteDetailWrapper onSelect={(s) => setSelected(s)} />
                   </div>
                 </div>

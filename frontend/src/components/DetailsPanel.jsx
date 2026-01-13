@@ -48,25 +48,19 @@ function MufaSplices({ data }) {
   const m = data.mufa || {};
 
   return (
-    <div
-      className="card"
-      style={{
-        maxHeight: "300px",
-        padding: "10px",
-        boxSizing: "border-box",
-        overflow: "auto",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>MUFA {m.code ?? m.id}</h3>
+    <div className="card stack" style={{ maxHeight: "320px", overflow: "auto"}}>
+      <div className="card-header">
+        <h3 className="card-title">MUFA {m.code ?? m.id}</h3>
+        {m.mufa_type ? <span className="badge">{m.mufa_type}</span>:null}
+      </div>
 
       {/* Datos Base Mufa */}
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        {m.mufa_type ? <span className="badge"> {m.mufa_type}</span> : null}
+      <div className="muted" style={{ fontSize: 12}}>        
         {m.gps_lat != null && m.gps_lon != null ? (
           <span>
             GPS: {m.gps_lat}, {m.gps_lon}{" "}
             <button
-              className="btn"
+              className="btn soft"
               style={{ marginLeft: 6, padding: "2px 8px", fontSize: 12 }}
               onClick={() =>
                 navigator.clipboard.writeText(`${m.gps_lat},${m.gps_lon}`)
@@ -103,7 +97,7 @@ function MufaSplices({ data }) {
           <div style={{ marginTop: 6 }}>
             Filtro activo: <b>{pairFilter}</b>{" "}
             <button
-              className="btn"
+              className="btn soft"
               style={{ marginLeft: 6, padding: "2px 8px", fontSize: 12 }}
               onClick={() => setPairFilter("")}
             >
@@ -223,17 +217,12 @@ function PoleDetails({ d }) {
   const neighbors = d.neighbors || [];
 
   return (
-    <div
-      className="stack"
-      style={{
-        maxHeight: "200px",
-        padding: "10px",
-        boxSizing: "border-box",
-        overflow: "auto",
-      }}
-    >
+    <div className="stack" style={{ maxHeight:"220px", overflow:"auto"}}>
       <div>
-        <b>Pole</b>
+        <div className="card-header">
+          <b>Pole</b>
+          <span className="badge">{p.pole_type ?? "Sin Tipo"}</span>
+        </div>
         <ul className="compact">
           <li>
             <b>ID:</b> {p.id}
@@ -412,28 +401,34 @@ export default function DetailsPanel({ selected }) {
   if (!selected) {
     return (
       <div className="card">
-        <b>Detalles</b>
-        <div className="muted" style={{ marginTop: 6 }}>
-          Selecciona un elemento del grafo para ver detalles.
+        <div className="card-header">
+          <b>Detalles</b>
+          <span className="badge">Intereacción</span>
         </div>
+        <p className="card-subtitle">
+          Selecciona un elemento del grafo para ver detalles.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <h3 style={{ margin: 0 }}>Detalles</h3>
+    <div className="card stack" style={{ marginTop: 12 }}>
+      <div className="card-header">
+        <h3 className="card-title">Detalles</h3>
+        <span className="badge">{data?.kind ?? "Selección"}</span>
+      </div>
 
       {!selNode && !selEdge && (
-        <div className="muted" style={{ marginTop: 6 }}>
+        <div className="muted">
           Selecciona un nodo o un segmento.
         </div>
       )}
 
-      {loading && <div style={{ marginTop: 6 }}>Cargando…</div>}
+      {loading && <div className="muted">Cargando…</div>}
 
       {!!error && (
-        <div style={{ marginTop: 6, color: "#b91c1c" }}>{String(error)}</div>
+        <div style={{ color: "#b91c1c" }}>{String(error)}</div>
       )}
 
       {/* POLE */}
