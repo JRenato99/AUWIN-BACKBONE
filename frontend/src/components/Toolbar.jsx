@@ -6,47 +6,44 @@ export default function Toolbar({
   const isOverview = view === "overview";
   const isRoute = view === "route";
 
-  const activeStyle = {
-    borderColor: "#22d3ee",
-    boxShadow: "0 0 0 2px rgba(34,211,238,0.25)",
-  };
+
 
   return (
-    <div
-      className="toolbar"
-      style={{ display: "flex", alignItems: "center", gap: 8 }}
-    >
-      <strong style={{ letterSpacing: 0.5 }}>AUWIN</strong>
-
-      <div style={{ flex: 1 }} />
+    <div className="toolbar">
+      <div className="toolbar-title">
+        <strong>AUWIN</strong>
+        <span>Network Operations</span>
+      </div>      
+      <div style={{ flex: 1 }}></div>
 
       {isRoute && typeof onBack === "function" && (
-        <button className="btn" onClick={onBack} title="Volver">
+        <button className="btn soft" onClick={onBack} title="Volver">
           Volver
         </button>
       )}
 
-      <button
-        className="btn"
-        onClick={() => onChangeView("overview")}
-        style={isOverview ? activeStyle : undefined}
-        aria-pressed={isOverview}
-        disabled={isOverview}
-        title="Overview"
-      >
-        Overview
-      </button>
-
-      <button
-        className="btn"
-        onClick={() => onChangeView("route")}
-        style={isRoute ? activeStyle : undefined}
-        aria-pressed={isRoute}
-        disabled={isRoute}
-        title="Ruta"
-      >
-        Ruta
-      </button>
+      <div className="toolbar-actions">
+        <div className="toolbar-tabs">
+          <button 
+            className={`btn ${isOverview ? "active" : ""}`}
+            onClick={()=> onChangeView("overview")}
+            aria-pressed={isOverview}
+            disabled={isOverview}
+            title="Overview"
+          >
+            Overview
+          </button>
+          <button
+            className={`btn ${isRoute ? "active" : ""}`}
+            onClick={() => onChangeView("route")}            
+            aria-pressed={isRoute}
+            disabled={isRoute}
+            title="Ruta"
+          >
+            Ruta
+          </button>          
+        </div>
+      </div>      
     </div>
   );
 }

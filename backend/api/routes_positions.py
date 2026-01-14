@@ -1,11 +1,16 @@
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from core.db import execute, fetch_all
+from sqlalchemy import text
+
+from core.db import execute, fetch_all, get_engine
 import hashlib
 from math import cos, sin, tau
 from core.util import _angle_from_id
 
 router = APIRouter(prefix="/graph/positions", tags=["positions"])
+logger = logging.getLogger(__name__)
 
 
 class NodePos(BaseModel):
@@ -24,8 +29,20 @@ def upsert_positions(items: list[NodePos]):  # Guarda posiciones manuales
       WHEN MATCHED THEN UPDATE SET x=src.x, y=src.y, updated_at=SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT (node_id, x, y) VALUES (src.node_id, src.x, src.y);
     """
-    for it in items:
-        execute(sql, node_id=it.node_id, x=it.x, y=it.y)
+    params = [{"node_id": it.node_id, "x": it.x, "y": it.y} for it in items]
+    batch_size = 500
+    with get_engine().begin() as conn:
+        for start in range(0, len(params), batch_size):
+            batch = params[start : start + batch_size]
+            try:
+                conn.execute(text(sql), batch)
+            except Exception:
+                failed_ids = [row["node_id"] for row in batch]
+                logger.exception(
+                    "Error al upsert_positions para node_id(s)=%s",
+                    failed_ids,
+                )
+                raise
     return {"ok": True, "count": len(items)}
 
 

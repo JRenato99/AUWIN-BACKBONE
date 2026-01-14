@@ -48,39 +48,26 @@ export default function RouteList({ routes = [], onOpenRoute = () => {} }) {
         const summaryText = r?.path_text || r?.span_list || "";
 
         return (
-          <div key={id} className="card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
+          <div key={id} className="card hoverable route-item">
+            <div className="route-item-header">
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     flexWrap: "wrap",
+                    gap: 8,
                   }}
-                >
-                  <b
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {id}
-                  </b>
+                >                  
+                  <span className="route-item-title">{id}</span>
+                  <span className="badge">Ruta</span>
                   {/*<CopyBtn text={id} title="Copiar Route ID" />*/}
                 </div>
                 <div
                   style={{
                     opacity: 0.85,
                     fontSize: 12,
-                    marginTop: 2,
+                    marginTop: 4,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -91,7 +78,7 @@ export default function RouteList({ routes = [], onOpenRoute = () => {} }) {
                 </div>
               </div>
               <button
-                className="btn"
+                className="btn accent"
                 onClick={() => canOpen && onOpenRoute(r)}
                 disabled={!canOpen}
                 title="Abrir detalle de ruta"
@@ -109,7 +96,9 @@ export default function RouteList({ routes = [], onOpenRoute = () => {} }) {
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                 }}
-              ></div>
+              >
+                {summaryText}
+              </div>
             )}
           </div>
         );

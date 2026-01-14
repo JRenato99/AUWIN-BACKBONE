@@ -105,7 +105,7 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
       }
 
       return {
-        id: e.id, // id interno vis-network (NO tiene por qué ser el route_id)
+        id: e.id, 
         from: e.from,
         to: e.to,
         title: e.title ?? "",
@@ -287,26 +287,23 @@ export default function GraphOverview({ onSelect, onOpenRoute }) {
         height: "100%",
       }}
     >
-      <div
-        className="card"
-        style={{ display: "flex", alignItems: "center", gap: 8 }}
-      >
+      <div className="card graph-toolbar">
         <button
-          className={`btn ${locked ? "accent" : ""}`}
+          className={`btn ${locked ? "accent" : "soft"}`}
           onClick={() => setLocked((v) => !v)}
           title={locked ? "Desbloquear arrastre" : "Bloquear arrastre"}
         >
           {locked ? "🔒 Bloqueado" : "🔓 Desbloqueado"}
         </button>
-        <div style={{ fontSize: 12, opacity: 0.7, marginLeft: 8 }}>
+        <div className="stats">
           {loading
             ? "Cargando…"
             : `Nodos: ${data.nodes.length} | Enlaces: ${data.edges.length}`}
         </div>
       </div>
 
-      <section style={{ border: "1px solid #ddd", borderRadius: 8 }}>
-        <div ref={containerRef} style={{ width: "100%", height: "80vh" }} />
+      <section className="graph-container graph-wrapper">
+        <div ref={containerRef} className="graph-surface" />
       </section>
     </div>
   );
